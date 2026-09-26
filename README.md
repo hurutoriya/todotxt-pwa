@@ -1,5 +1,7 @@
 # Todo.txt PWA
 
+🌐 公開URL: https://hurutoriya.github.io/todotxt-pwa/
+
 todo.txt 規格準拠のローカルファーストなタスク管理PWAです。ホスティングは GitHub Pages を想定したビルド不要の静的構成です。
 
 ## 特徴

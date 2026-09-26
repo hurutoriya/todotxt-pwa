@@ -1,0 +1,113 @@
+// ローカルファイル参照レイヤー
+// - File System Access API (showOpenFilePicker) があれば上書き保存まで対応
+// - なければ <input type=file> + ダウンロード保存のフォールバック
+// - ハンドルは IndexedDB に保存し、起動時の「最近使ったファイル」から再選択できる
+
+export const supportsFS = typeof window !== "undefined" && "showOpenFilePicker" in window;
+
+const DB = "todotxt-pwa";
+const STORE = "handles";
+
+function idb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, val) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(val, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+async function idbGet(key) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE, "readonly");
+    const q = tx.objectStore(STORE).get(key);
+    q.onsuccess = () => res(q.result);
+    q.onerror = () => rej(q.error);
+  });
+}
+
+export async function verifyPermission(handle, write = false) {
+  if (!handle?.queryPermission) return true;
+  const mode = write ? { mode: "readwrite" } : {};
+  if ((await handle.queryPermission(mode)) === "granted") return true;
+  return (await handle.requestPermission(mode)) === "granted";
+}
+
+export async function pickFile() {
+  const [handle] = await window.showOpenFilePicker({
+    types: [{ description: "todo.txt", accept: { "text/plain": [".txt"] } }],
+    multiple: false,
+  });
+  await verifyPermission(handle, false);
+  const file = await handle.getFile();
+  const text = await file.text();
+  await rememberHandle(handle, file.name);
+  return { handle, name: file.name, text, lastModified: file.lastModified };
+}
+
+export async function createFile(suggestedName = "todo.txt") {
+  const handle = await window.showSaveFilePicker({
+    suggestedName,
+    types: [{ description: "todo.txt", accept: { "text/plain": [".txt"] } }],
+  });
+  await verifyPermission(handle, true);
+  await rememberHandle(handle, handle.name ?? suggestedName);
+  return { handle, name: handle.name ?? suggestedName, text: "", lastModified: Date.now() };
+}
+
+export async function readHandle(handle) {
+  await verifyPermission(handle, false);
+  const file = await handle.getFile();
+  return { name: file.name, text: await file.text(), lastModified: file.lastModified };
+}
+
+export async function writeHandle(handle, text) {
+  await verifyPermission(handle, true);
+  const w = await handle.createWritable();
+  await w.write(text);
+  await w.close();
+}
+
+async function rememberHandle(handle, name) {
+  try {
+    const recents = (await idbGet("recents")) ?? [];
+    const next = [{ name, savedAt: Date.now() }, ...recents.filter((r) => r.name !== name)].slice(0, 5);
+    await idbSet("recents", next);
+    // ハンドル本体は名前キーで保存（複数ファイル対応）。最新は "lastName" で指す。
+    await idbSet("handle:" + name, handle);
+    await idbSet("lastName", name);
+  } catch { /* private mode 等では無視 */ }
+}
+
+export async function getRecents() {
+  try { return (await idbGet("recents")) ?? []; } catch { return []; }
+}
+
+export async function getStoredHandle(name) {
+  try {
+    const key = name ?? (await idbGet("lastName"));
+    if (!key) return null;
+    const h = await idbGet("handle:" + key);
+    return h ? { handle: h, name: key } : null;
+  } catch { return null; }
+}
+
+export function downloadText(filename, text) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename || "todo.txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}

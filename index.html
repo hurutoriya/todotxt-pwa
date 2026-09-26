@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Todo.txt PWA</title>
+  <meta name="description" content="todo.txt 規格準拠のローカルファーストなタスク管理PWA。ファイルはブラウザからローカル参照のみ。" />
+  <meta name="theme-color" content="#1a1d21" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="./icons/icon.svg" alt="" width="28" height="28" />
+      <div>
+        <h1>Todo.txt PWA</h1>
+      </div>
+    </div>
+    <div class="file-chip" id="file-chip" hidden>
+      <span class="dot" id="dirty-dot" title="未保存の変更"></span>
+      <span id="file-name">todo.txt</span>
+      <span class="save-state" id="save-state"></span>
+    </div>
+    <nav class="header-actions">
+      <button id="btn-reload" class="btn ghost" title="ファイルから再読込" hidden>↻</button>
+      <button id="btn-download" class="btn ghost" title="ファイルをダウンロード保存" hidden>⬇ 保存</button>
+      <button id="btn-close" class="btn ghost" title="ファイルを閉じる">✕</button>
+      <button id="btn-install" class="btn ghost" hidden>＋ インストール</button>
+    </nav>
+  </header>
+
+  <!-- 起動時のファイル選択画面 -->
+  <section id="welcome" class="welcome">
+    <div class="welcome-card" id="drop-zone">
+      <h2>ローカルの todo.txt を開く</h2>
+      <p class="muted">
+        アプリ起動時に、参照するローカルファイルを選択します。<br />
+        データは外部サーバーに送信されません。すべてブラウザ内で処理されます。
+      </p>
+      <div class="welcome-buttons">
+        <button id="btn-pick" class="btn primary">📂 ファイルを選択…</button>
+        <button id="btn-new" class="btn">📄 新規作成</button>
+        <button id="btn-sample" class="btn">✨ サンプルで試す</button>
+      </div>
+      <input type="file" id="fallback-input" accept=".txt,text/plain" hidden />
+      <div id="recent-wrap" hidden>
+        <h3>最近使ったファイル</h3>
+        <ul id="recent-list" class="recent-list"></ul>
+        <p class="hint">※ ブラウザのセキュリティ上、再選択時は権限の許可が必要です。</p>
+      </div>
+      <div class="drop-hint">ここに <code>.txt</code> をドラッグ＆ドロップでも開けます</div>
+      <details class="compat">
+        <summary>対応ブラウザについて</summary>
+        <p id="compat-msg" class="muted"></p>
+      </details>
+    </div>
+  </section>
+
+  <!-- メイン -->
+  <main id="main" class="main" hidden>
+    <section class="add-bar">
+      <input id="quick-add" type="text" placeholder="(A) 2026-09-26 新しいタスク +Project @ctx due:2026-10-01" autocomplete="off" />
+      <button id="btn-add" class="btn primary">追加</button>
+    </section>
+
+    <section class="toolbar">
+      <input id="q" type="search" placeholder="🔍 検索…" />
+      <select id="f-project" title="プロジェクトで絞り込み"><option value="">+ Project: すべて</option></select>
+      <select id="f-context" title="コンテキストで絞り込み"><option value="">@ Context: すべて</option></select>
+      <select id="f-priority" title="優先度で絞り込み">
+        <option value="">優先度: すべて</option>
+        <option value="A">A</option><option value="B">B</option><option value="C">C</option>
+        <option value="D">D</option><option value="E">E</option><option value="NONE">なし</option>
+      </select>
+      <select id="f-sort" title="並び替え">
+        <option value="default">並び: ファイル順</option>
+        <option value="priority">優先度 → 期日順</option>
+        <option value="due">期日順</option>
+        <option value="created">作成日順</option>
+      </select>
+      <label class="check"><input type="checkbox" id="f-show-done" checked /> 完了を表示</label>
+      <button id="btn-archive" class="btn small" title="完了タスクを done.txt 形式で除去">🧹 完了を整理</button>
+    </section>
+
+    <section class="stats muted" id="stats"></section>
+
+    <ul id="task-list" class="task-list"></ul>
+    <div id="empty" class="empty" hidden>
+      <p>該当するタスクがありません。</p>
+    </div>
+  </main>
+
+  <!-- 編集ダイアログ -->
+  <dialog id="edit-dialog">
+    <form method="dialog" class="edit-form" id="edit-form">
+      <h3 id="edit-title">タスクを編集</h3>
+      <label>本文 (todo.txt 1行)
+        <textarea id="ed-raw" rows="3" spellcheck="false"></textarea>
+      </label>
+      <div class="grid2">
+        <label class="check"><input type="checkbox" id="ed-done" /> 完了 (x)</label>
+        <label>優先度
+          <select id="ed-pri">
+            <option value="">なし</option>
+            <option>A</option><option>B</option><option>C</option><option>D</option>
+            <option>E</option><option>F</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid2">
+        <label>作成日 <input type="date" id="ed-created" /></label>
+        <label>完了日 <input type="date" id="ed-completed" /></label>
+      </div>
+      <label>説明 (プロジェクト + / コンテキスト @ / 期日 due:YYYY-MM-DD を含められます)
+        <input type="text" id="ed-body" />
+      </label>
+      <div class="preview">プレビュー: <code id="ed-preview"></code></div>
+      <menu>
+        <button value="cancel" class="btn ghost" id="ed-cancel">キャンセル</button>
+        <button value="default" class="btn primary" id="ed-save">保存</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

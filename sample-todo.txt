@@ -1,0 +1,4 @@
+(A) 2026-09-26 Todo.txt PWA を試す +Sample @phone due:2026-10-01
+(B) プロジェクトで絞り込む +Sample @pc
+買い物リストを作る +Home @GroceryStore
+x 2026-09-25 2026-09-20 完了済みタスクの表示確認 +Sample

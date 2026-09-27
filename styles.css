@@ -92,6 +92,7 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .edit-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
 .edit-form input, .edit-form textarea, .edit-form select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); font-size: 0.9rem; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 .preview { font-size: 0.8rem; color: var(--muted); }
 menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; padding: 0; }
 .toast {
@@ -103,4 +104,5 @@ menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; padding: 0
 @media (max-width: 600px) {
   .file-chip { display: none; }
   .grid2 { grid-template-columns: 1fr; }
+  .grid3 { grid-template-columns: 1fr; }
 }

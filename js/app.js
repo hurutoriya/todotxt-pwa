@@ -1,4 +1,4 @@
-import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr } from "./parser.js";
+import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate } from "./parser.js";
 import {
   supportsFS, pickFile, createFile, readHandle, writeHandle,
   getRecents, getStoredHandle, verifyPermission, downloadText,
@@ -251,6 +251,40 @@ function addRaw(raw) {
 }
 
 // ---- edit dialog ----
+/** 期日欄の値を body の due:YYYY-MM-DD に反映する（todo.txt の key:value 拡張） */
+function bodyWithDue(body, due) {
+  const hasValidDue = /\bdue:\d{4}-\d{2}-\d{2}\b/.test(body);
+  if (!due && !hasValidDue) return body; // 不正な due トークンは温存する
+  let b = body.replace(/\bdue:\S+/g, "").replace(/\s{2,}/g, " ").trim();
+  if (due) b = b ? `${b} due:${due}` : `due:${due}`;
+  return b;
+}
+
+/** ダイアログの各欄から構造化タスクを組み立てる */
+function readEditForm() {
+  const t = {
+    completed: $("ed-done").checked,
+    priority: $("ed-pri").value || null,
+    creationDate: $("ed-created").value || null,
+    completionDate: $("ed-completed").value || null,
+    body: bodyWithDue($("ed-body").value.trim(), $("ed-due").value || null),
+  };
+  if (t.completed && !t.completionDate) t.completionDate = todayStr();
+  return t;
+}
+
+/** raw から構造欄へ逆反映（期日含む） */
+function fillEditForm(raw) {
+  const p = parseLine(raw);
+  $("ed-done").checked = p.completed;
+  $("ed-pri").value = p.priority ?? "";
+  $("ed-created").value = p.creationDate ?? "";
+  $("ed-completed").value = p.completionDate ?? "";
+  $("ed-body").value = p.body;
+  const d = p.fields?.due?.[0];
+  $("ed-due").value = d && isValidDate(d) ? d : "";
+}
+
 function openEdit(i) {
   editingIndex = i;
   const l = lines[i];
@@ -261,31 +295,19 @@ function openEdit(i) {
   $("ed-created").value = l.creationDate ?? "";
   $("ed-completed").value = l.completionDate ?? "";
   $("ed-body").value = l.body;
+  const d = l.fields?.due?.[0];
+  $("ed-due").value = d && isValidDate(d) ? d : "";
   // 作成日が空の未完了タスクは今日で自動FILLし、raw欄にも反映する
   if (!l.creationDate && !l.completed) {
     $("ed-created").value = todayStr();
-    $("ed-raw").value = stringify({
-      completed: false,
-      priority: $("ed-pri").value || null,
-      creationDate: todayStr(),
-      completionDate: null,
-      body: $("ed-body").value.trim(),
-    });
+    $("ed-raw").value = stringify(readEditForm());
   }
   updatePreview();
   $("edit-dialog").showModal();
 }
 
 function updatePreview() {
-  const t = {
-    completed: $("ed-done").checked,
-    priority: $("ed-pri").value || null,
-    creationDate: $("ed-created").value || null,
-    completionDate: $("ed-completed").value || null,
-    body: $("ed-body").value.trim(),
-  };
-  if (t.completed && !t.completionDate) t.completionDate = todayStr();
-  $("ed-preview").textContent = stringify(t);
+  $("ed-preview").textContent = stringify(readEditForm());
 }
 
 function saveEdit() {
@@ -435,43 +457,21 @@ function bind() {
   });
 
   // 編集ダイアログの連動
-  for (const id of ["ed-done", "ed-pri", "ed-created", "ed-completed", "ed-body"]) {
+  for (const id of ["ed-done", "ed-pri", "ed-created", "ed-completed", "ed-due", "ed-body"]) {
     $(id).addEventListener("input", () => {
       // body/構造を変えたら raw にも反映してプレビュー更新
       if (id !== "ed-raw") {
-        const t = {
-          completed: $("ed-done").checked,
-          priority: $("ed-pri").value || null,
-          creationDate: $("ed-created").value || null,
-          completionDate: $("ed-completed").value || null,
-          body: $("ed-body").value.trim(),
-        };
-        if (t.completed && !t.completionDate) t.completionDate = todayStr();
-        $("ed-raw").value = stringify(t);
+        $("ed-raw").value = stringify(readEditForm());
       } else {
         // raw直編集時は構造欄へ逆反映
-        try {
-          const p = parseLine($("ed-raw").value);
-          $("ed-done").checked = p.completed;
-          $("ed-pri").value = p.priority ?? "";
-          $("ed-created").value = p.creationDate ?? "";
-          $("ed-completed").value = p.completionDate ?? "";
-          $("ed-body").value = p.body;
-        } catch { /* ignore */ }
+        try { fillEditForm($("ed-raw").value); } catch { /* ignore */ }
       }
       updatePreview();
     });
   }
   // raw欄は上ループに含まれていないので別途
   $("ed-raw").addEventListener("input", () => {
-    try {
-      const p = parseLine($("ed-raw").value);
-      $("ed-done").checked = p.completed;
-      $("ed-pri").value = p.priority ?? "";
-      $("ed-created").value = p.creationDate ?? "";
-      $("ed-completed").value = p.completionDate ?? "";
-      $("ed-body").value = p.body;
-    } catch { /* ignore */ }
+    try { fillEditForm($("ed-raw").value); } catch { /* ignore */ }
     updatePreview();
   });
   $("ed-save").addEventListener("click", (e) => { e.preventDefault(); saveEdit(); $("edit-dialog").close(); });

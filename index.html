@@ -19,21 +19,16 @@
         <h1>Todo.txt PWA</h1>
       </div>
     </div>
+    <div class="file-chip" id="file-chip" hidden>
+      <span class="dot" id="dirty-dot" title="未保存の変更"></span>
+      <span id="file-name">todo.txt</span>
+      <span class="save-state" id="save-state"></span>
+    </div>
     <nav class="header-actions">
-      <button id="btn-menu" class="btn ghost" aria-haspopup="true" aria-expanded="false" title="メニュー">☰</button>
-      <div id="menu-dropdown" class="menu-dropdown" hidden>
-        <div class="file-chip menu-file" id="file-chip" hidden>
-          <span class="dot" id="dirty-dot" title="未保存の変更"></span>
-          <div class="menu-file-text">
-            <div id="file-name">todo.txt</div>
-            <div class="save-state" id="save-state"></div>
-          </div>
-        </div>
-        <button id="btn-download" class="menu-item" hidden>⬇ 保存</button>
-        <button id="btn-reload" class="menu-item" hidden>↻ ファイルから再読込</button>
-        <button id="btn-close" class="menu-item">✕ ファイルを閉じる</button>
-        <button id="btn-install" class="menu-item" hidden>＋ インストール</button>
-      </div>
+      <button id="btn-reload" class="btn ghost" title="ファイルから再読込" hidden>↻</button>
+      <button id="btn-download" class="btn ghost" title="ファイルをダウンロード保存" hidden>⬇ 保存</button>
+      <button id="btn-close" class="btn ghost" title="ファイルを閉じる">✕</button>
+      <button id="btn-install" class="btn ghost" hidden>＋ インストール</button>
     </nav>
   </header>
 

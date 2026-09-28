@@ -1,7 +1,7 @@
 /* Todo.txt PWA Service Worker — GitHub Pages のサブパス対応のため相対パス基準
    HTML/JS/CSS は network-first（オンライン時は常に最新、オフライン時はキャッシュ）、
    画像は cache-first */
-const CACHE = "todotxt-pwa-v6";
+const CACHE = "todotxt-pwa-v7";
 const ASSETS = [
   "./",
   "./index.html",

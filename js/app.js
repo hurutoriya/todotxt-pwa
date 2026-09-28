@@ -532,10 +532,25 @@ function bind() {
   });
   $("btn-install").addEventListener("click", async () => {
     if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
+    try {
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice?.outcome === "accepted") {
+        toast("インストールを開始しました");
+      } else {
+        toast("メニューからいつでもインストールできます");
+      }
+    } catch (e) {
+      console.warn("インストール開始に失敗:", e);
+      toast("インストールを開始できませんでした: " + (e?.message ?? e));
+    }
     deferredPrompt = null;
     $("btn-install").hidden = true;
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    $("btn-install").hidden = true;
+    toast("インストールしました 🎉");
   });
 }
 

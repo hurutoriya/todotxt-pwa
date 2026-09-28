@@ -26,7 +26,7 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .brand h1 { font-size: 1.05rem; margin: 0; }
-.header-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.header-actions { display: flex; gap: 6px; flex-wrap: wrap; position: relative; }
 .file-chip {
   display: flex; align-items: center; gap: 8px; padding: 6px 12px;
   background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
@@ -35,6 +35,27 @@ body {
 .file-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .file-chip .dot.dirty { background: #ffd43b; }
 .save-state { color: var(--muted); font-size: 0.75rem; }
+.menu-dropdown {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 30;
+  min-width: 250px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.menu-dropdown[hidden] { display: none; }
+.menu-dropdown .file-chip {
+  max-width: none; border-radius: 8px; border: none; background: transparent;
+  padding: 8px 10px; white-space: normal; overflow-wrap: anywhere;
+}
+.menu-file-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.menu-file-text #file-name { font-weight: 700; }
+.menu-item {
+  width: 100%; text-align: left;
+  background: transparent; color: var(--text); border: none; border-radius: 8px;
+  padding: 10px 12px; cursor: pointer; font-size: 0.9rem;
+}
+.menu-item:hover { background: var(--panel); }
+.menu-item[hidden] { display: none; }
 .btn {
   background: var(--panel2); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 0.9rem;
@@ -109,7 +130,6 @@ menu { display: flex; justify-content: flex-end; gap: 8px; margin: 0; padding: 0
 }
 .update-banner[hidden] { display: none; }
 @media (max-width: 600px) {
-  .file-chip { display: none; }
   .grid2 { grid-template-columns: 1fr; }
   .grid3 { grid-template-columns: 1fr; }
 }

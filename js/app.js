@@ -552,6 +552,25 @@ function bind() {
     $("btn-install").hidden = true;
     toast("インストールしました 🎉");
   });
+
+  // ハンバーガーメニュー
+  const setMenu = (open) => {
+    $("menu-dropdown").hidden = !open;
+    $("btn-menu").setAttribute("aria-expanded", String(open));
+  };
+  $("btn-menu").addEventListener("click", (e) => {
+    e.stopPropagation();
+    setMenu($("menu-dropdown").hidden);
+  });
+  document.addEventListener("click", (e) => {
+    if (!$("menu-dropdown").hidden && !$("menu-dropdown").contains(e.target)) setMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setMenu(false);
+  });
+  $("menu-dropdown").addEventListener("click", (e) => {
+    if (e.target.closest("button")) setMenu(false);
+  });
 }
 
 // ---- init ----

@@ -1,7 +1,7 @@
 /* Todo.txt PWA Service Worker — GitHub Pages のサブパス対応のため相対パス基準
    HTML/JS/CSS は network-first（オンライン時は常に最新、オフライン時はキャッシュ）、
    画像は cache-first */
-const CACHE = "todotxt-pwa-v7";
+const CACHE = "todotxt-pwa-v8";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,6 +13,8 @@ const ASSETS = [
   "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./screenshots/desktop-1280x720.png",
+  "./screenshots/mobile-390x844.png",
 ];
 
 self.addEventListener("install", (e) => {

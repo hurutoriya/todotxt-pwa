@@ -1,7 +1,7 @@
 /* Todo.txt PWA Service Worker — GitHub Pages のサブパス対応のため相対パス基準
    HTML/JS/CSS は network-first（オンライン時は常に最新、オフライン時はキャッシュ）、
    画像は cache-first */
-const CACHE = "todotxt-pwa-v8";
+const CACHE = "todotxt-pwa-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -23,7 +23,18 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())
+    caches.keys().then((keys) => {
+      const hadOld = keys.some((k) => k !== CACHE);
+      return Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+        .then(() => self.clients.claim())
+        .then(() => {
+          // 初回インストール時は通知しない。更新時のみ開いている頁へ通知する
+          if (!hadOld) return;
+          return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) =>
+            clients.forEach((c) => c.postMessage({ type: "SW_UPDATED", version: CACHE }))
+          );
+        });
+    })
   );
 });
 

@@ -38,6 +38,22 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
 }
 
+// ---- PWA更新の適用 ----
+let updateReady = false;
+function onUpdateReady(version) {
+  if (updateReady) return;
+  updateReady = true;
+  console.info("PWA更新を検出:", version);
+  // 編集ダイアログの未保存ドラフト以外はスナップショット済みのため安全に再読み込みできる
+  if (!$("edit-dialog").open) {
+    toast("新しいバージョンを適用します…");
+    setTimeout(() => location.reload(), 800);
+  } else {
+    $("update-banner").hidden = false;
+    toast("新しいバージョンがあります。保存後に再読み込みしてください");
+  }
+}
+
 // ---- serialize / save ----
 function serialize() {
   return lines.map((l) => l.raw).join("\n") + (lines.length ? "\n" : "");
@@ -557,10 +573,27 @@ async function init() {
   await refreshRecents();
   if ("serviceWorker" in navigator) {
     try {
-      await navigator.serviceWorker.register("./sw.js");
+      const reg = await navigator.serviceWorker.register("./sw.js");
+      // サーバー側の更新を定期チェック（1時間毎＋復帰時＋回線復帰時）。
+      // 更新があれば新SWが即時activate→通知→下の onUpdateReady で適用する
+      const checkUpdate = () => reg.update().catch(() => {});
+      setInterval(checkUpdate, 60 * 60 * 1000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") checkUpdate();
+      });
+      window.addEventListener("online", checkUpdate);
     } catch (e) {
       console.warn("Service Worker 登録失敗:", e);
     }
+    // 更新SWからの通知を受けて新バージョンを適用する
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type === "SW_UPDATED") onUpdateReady(e.data.version);
+    });
+    // 更新バナーからの手動再読み込み／ダイアログを閉じたら保留中の更新を適用
+    $("btn-update-reload").addEventListener("click", () => location.reload());
+    $("edit-dialog").addEventListener("close", () => {
+      if (updateReady) location.reload();
+    });
   }
   // 終了前に未保存があれば警告（fallback時）
   window.addEventListener("beforeunload", (e) => {

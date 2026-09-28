@@ -2,6 +2,7 @@ import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isVal
 import {
   supportsFS, pickFile, createFile, readHandle, writeHandle,
   getRecents, getStoredHandle, verifyPermission, downloadText,
+  queryGranted, saveContentSnapshot, loadContentSnapshot, clearContentSnapshot,
 } from "./file-manager.js";
 
 const $ = (id) => document.getElementById(id);
@@ -52,13 +53,17 @@ function markDirty() {
   } else {
     $("save-state").textContent = "保存中…";
   }
+  // スナップショットは即時・同期保存（閉じる直前の編集も失わない）
+  saveContentSnapshot(fileName, serialize());
   clearTimeout(saveTimer);
   saveTimer = setTimeout(persist, 600);
 }
 
 async function persist() {
-  if (!dirty && fileHandle) return;
   const text = serialize();
+  // disk成否に関わらずブラウザ内に永続化（次回起動時に自動復元される）
+  saveContentSnapshot(fileName, text);
+  if (!dirty) return;
   if (fileHandle) {
     try {
       await writeHandle(fileHandle, text);
@@ -104,17 +109,18 @@ function loadText(name, text, handle) {
   dirty = false;
   $("file-name").textContent = name;
   $("dirty-dot").classList.remove("dirty");
-  $("save-state").textContent = fileHandle ? "保存済み ✓" : "メモリ上 (要ダウンロード保存)";
+  $("save-state").textContent = fileHandle ? "保存済み ✓" : "ブラウザに自動保存中";
   showWelcome(false);
   render();
   toast(`${name} を開きました (${lines.length}件)`);
 }
 
-function closeFile() {
+async function closeFile() {
   lines = [];
   fileName = "";
   fileHandle = null;
   dirty = false;
+  await clearContentSnapshot();
   showWelcome(true);
   refreshRecents();
 }
@@ -390,9 +396,9 @@ function bind() {
     e.target.value = "";
   });
 
-  $("btn-close").addEventListener("click", () => {
+  $("btn-close").addEventListener("click", async () => {
     if (dirty && !confirm("未保存の変更があります。閉じますか？")) return;
-    closeFile();
+    await closeFile();
   });
   $("btn-reload").addEventListener("click", async () => {
     if (!fileHandle) return;
@@ -404,6 +410,7 @@ function bind() {
       $("dirty-dot").classList.remove("dirty");
       $("save-state").textContent = "保存済み ✓";
       render();
+      saveContentSnapshot(fileName, serialize());
       toast("ファイルから再読込しました");
     } catch (e) { toast("再読込に失敗: " + (e.message ?? e)); }
   });
@@ -519,11 +526,34 @@ function bind() {
 // ---- init ----
 async function init() {
   bind();
-  showWelcome(true);
   $("quick-add").placeholder = `(A) ${todayStr()} 新しいタスク +Project @ctx due:2026-10-01（作成日は自動付与）`;
   $("compat-msg").textContent = supportsFS
     ? "このブラウザは File System Access API に対応しています。開いたファイルへの直接上書き保存が可能です。"
     : "このブラウザは File System Access API に未対応のため、ファイルを開く→編集→ダウンロード保存の方式になります（Chrome/Edge では直接保存が可能です）。";
+  // 前回内容の自動復元（PWAを閉じても次回起動時は選択なしでそのまま開く）
+  const snap = await loadContentSnapshot();
+  if (snap && typeof snap.text === "string" && snap.name) {
+    let restored = false;
+    if (supportsFS) {
+      try {
+        const stored = await getStoredHandle(snap.name);
+        if (stored && (await queryGranted(stored.handle, true))) {
+          const { text, lastModified: lm } = await readHandle(stored.handle);
+          loadText(stored.name, text, stored.handle);
+          lastModified = lm;
+          saveContentSnapshot(stored.name, text);
+          toast("前回のファイルを自動で開きました");
+          restored = true;
+        }
+      } catch (e) { console.warn("ハンドル自動復元に失敗、スナップショットを使用:", e); }
+    }
+    if (!restored) {
+      loadText(snap.name, snap.text, null);
+      toast("前回の内容をブラウザから復元しました");
+    }
+  } else {
+    showWelcome(true);
+  }
   await refreshRecents();
   if ("serviceWorker" in navigator) {
     try {
@@ -535,6 +565,12 @@ async function init() {
   // 終了前に未保存があれば警告（fallback時）
   window.addEventListener("beforeunload", (e) => {
     if (dirty) { e.preventDefault(); e.returnValue = ""; }
+  });
+  // 閉じる・バックグラウンド化の直前に保留中の保存をフラッシュする
+  const flush = () => { clearTimeout(saveTimer); persist(); };
+  window.addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flush();
   });
 }
 

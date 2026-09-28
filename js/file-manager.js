@@ -37,6 +37,42 @@ async function idbGet(key) {
   });
 }
 
+/** ジェスチャなしで許可状態だけを確認する（起動時自動復元用。プロンプトは出さない） */
+export async function queryGranted(handle, write = false) {
+  if (!handle?.queryPermission) return false;
+  try {
+    return (await handle.queryPermission(write ? { mode: "readwrite" } : {})) === "granted";
+  } catch {
+    return false;
+  }
+}
+
+const SNAP_KEY = "todotxt-pwa:snapshot";
+
+/** 編集中内容のスナップショットをブラウザ内(localStorage)に同期・永続化。
+    閉じても次回起動時に復元される。pagehide時も確実に書けるよう同期的APIを使う */
+export function saveContentSnapshot(name, text) {
+  try {
+    localStorage.setItem(SNAP_KEY, JSON.stringify({ name, text, updatedAt: Date.now() }));
+  } catch { /* quota超過等は無視 */ }
+}
+
+export function loadContentSnapshot() {
+  try {
+    const raw = localStorage.getItem(SNAP_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 明示的にファイルを閉じたときはスナップショットも破棄する */
+export function clearContentSnapshot() {
+  try {
+    localStorage.removeItem(SNAP_KEY);
+  } catch { /* ignore */ }
+}
+
 export async function verifyPermission(handle, write = false) {
   if (!handle?.queryPermission) return true;
   const mode = write ? { mode: "readwrite" } : {};

@@ -229,10 +229,10 @@ function render() {
     const overdue = due && due < todayStr() && !l.completed;
     li.innerHTML = `
       <input type="checkbox" ${l.completed ? "checked" : ""} aria-label="完了切替" />
-      ${l.priority ? `<span class="pri pri-${l.priority}">${escapeHtml(l.priority)}</span>` : ""}
       <div class="task-main">
         <div class="body">${highlight(l.body || escapeHtml("(空)"), l)}</div>
         <div class="meta">
+          ${l.priority ? `<span class="pri pri-${l.priority}">${escapeHtml(l.priority)}</span>` : ""}
           ${l.creationDate ? `<span>作成 ${escapeHtml(l.creationDate)}</span>` : ""}
           ${l.completionDate ? `<span>完了 ${escapeHtml(l.completionDate)}</span>` : ""}
           ${due ? `<span class="tag-due${overdue ? " overdue" : ""}">〆 ${escapeHtml(due)}${overdue ? " 期限切れ" : ""}</span>` : ""}

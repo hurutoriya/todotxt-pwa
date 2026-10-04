@@ -24,6 +24,7 @@ let dirty = false;
 let lastModified = 0;
 let saveTimer = 0;
 let editingIndex = -1;      // lines 配列上のインデックス
+let editingCompletionDate = null; // 編集中タスクの完了日（表示はしないが保持する）
 let deferredPrompt = null;
 
 const filters = { q: "", project: "", context: "", priority: "", showDone: true, sort: "default" };
@@ -309,10 +310,10 @@ function readEditForm() {
     completed: $("ed-done").checked,
     priority: $("ed-pri").value || null,
     creationDate: $("ed-created").value || null,
-    completionDate: $("ed-completed").value || null,
+    // 完了日は表示しない。完了時は今日を自動付与し、編集中は既存値を保持する
+    completionDate: $("ed-done").checked ? (editingCompletionDate || todayStr()) : null,
     body: bodyWithDue($("ed-body").value.trim(), $("ed-due").value || null),
   };
-  if (t.completed && !t.completionDate) t.completionDate = todayStr();
   return t;
 }
 
@@ -322,7 +323,7 @@ function fillEditForm(raw) {
   $("ed-done").checked = p.completed;
   $("ed-pri").value = p.priority ?? "";
   $("ed-created").value = p.creationDate ?? "";
-  $("ed-completed").value = p.completionDate ?? "";
+  editingCompletionDate = p.completionDate ?? null;
   $("ed-body").value = p.body;
   const d = p.fields?.due?.[0];
   $("ed-due").value = d && isValidDate(d) ? d : "";
@@ -336,7 +337,7 @@ function openEdit(i) {
   $("ed-done").checked = l.completed;
   $("ed-pri").value = l.priority ?? "";
   $("ed-created").value = l.creationDate ?? "";
-  $("ed-completed").value = l.completionDate ?? "";
+  editingCompletionDate = l.completionDate ?? null;
   $("ed-body").value = l.body;
   const d = l.fields?.due?.[0];
   $("ed-due").value = d && isValidDate(d) ? d : "";
@@ -502,7 +503,7 @@ function bind() {
   });
 
   // 編集ダイアログの連動
-  for (const id of ["ed-done", "ed-pri", "ed-created", "ed-completed", "ed-due", "ed-body"]) {
+  for (const id of ["ed-done", "ed-pri", "ed-created", "ed-due", "ed-body"]) {
     $(id).addEventListener("input", () => {
       // body/構造を変えたら raw にも反映してプレビュー更新
       if (id !== "ed-raw") {

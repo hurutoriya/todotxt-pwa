@@ -72,6 +72,7 @@ body {
 .task input[type="checkbox"] { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); cursor: pointer; }
 .task-main { flex: 1; min-width: 0; }
 .body { overflow-wrap: anywhere; line-height: 1.5; }
+.body a { color: #74c0fc; text-decoration: underline; overflow-wrap: anywhere; }
 .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 0.75rem; color: var(--muted); }
 .pri { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; font-weight: 800; font-size: 0.8rem; flex-shrink: 0; }
 .pri-A { background: var(--pri-a); color: #2b0000; }

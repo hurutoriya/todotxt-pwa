@@ -175,15 +175,34 @@ function escapeHtml(s) {
 }
 
 function highlight(body, line) {
-  let h = escapeHtml(body);
-  h = h.replace(/(\+)([^\s]+)/g, '<span class="tag-proj">$1$2</span>');
-  h = h.replace(/(@)([^\s]+)/g, '<span class="tag-ctx">$1$2</span>');
-  h = h.replace(/\b(due:[^\s<]+)/g, (m) => {
-    const v = m.slice(4);
-    const overdue = /^\d{4}-\d{2}-\d{2}$/.test(v) && v < todayStr() && !line.completed;
-    return `<span class="tag-due${overdue ? " overdue" : ""}">${m}</span>`;
-  });
-  return h;
+  // 空白区切りトークン単位で処理する。URL内の +/@ や "2+2"・"soandso@example.com"
+  // の誤検出を防ぐ（仕様上 +/@ は空白の直後に置かれたもののみ有効）
+  return String(body).split(/(\s+)/).map((tok) => {
+    if (tok === "" || /^\s+$/.test(tok)) return tok;
+    // URL (http/https のみ。javascript: 等は対象外)
+    const mUrl = tok.match(/^(https?:\/\/[^\s<]+)/i);
+    if (mUrl) {
+      let url = mUrl[1];
+      let extra = tok.slice(url.length);
+      // 末尾の句読点・閉じ括弧はリンク外とする
+      const mTrail = url.match(/^(.*?)([.,;:!?)\]}'"]+)$/);
+      if (mTrail && mTrail[1].length > "https://x".length) {
+        url = mTrail[1];
+        extra = mTrail[2] + extra;
+      }
+      const esc = escapeHtml(url);
+      return `<a href="${esc}" target="_blank" rel="noopener noreferrer">${esc}</a>${escapeHtml(extra)}`;
+    }
+    let h = escapeHtml(tok);
+    h = h.replace(/^(\+)(.+)$/, '<span class="tag-proj">$1$2</span>');
+    h = h.replace(/^(@)(.+)$/, '<span class="tag-ctx">$1$2</span>');
+    h = h.replace(/^(due:\S+)$/, (m) => {
+      const v = m.slice(4);
+      const overdue = /^\d{4}-\d{2}-\d{2}$/.test(v) && v < todayStr() && !line.completed;
+      return `<span class="tag-due${overdue ? " overdue" : ""}">${m}</span>`;
+    });
+    return h;
+  }).join("");
 }
 
 // ---- render ----

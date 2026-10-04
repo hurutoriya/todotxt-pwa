@@ -237,23 +237,17 @@ function render() {
           ${l.completionDate ? `<span>完了 ${escapeHtml(l.completionDate)}</span>` : ""}
           ${due ? `<span class="tag-due${overdue ? " overdue" : ""}">〆 ${escapeHtml(due)}${overdue ? " 期限切れ" : ""}</span>` : ""}
         </div>
-      </div>
-      <div class="task-actions">
-        <button title="編集">✏️</button>
-        <button title="削除">🗑️</button>
       </div>`;
-    const [cb, btnEdit, btnDel] = [li.querySelector("input"), ...li.querySelectorAll(".task-actions button")];
+    const cb = li.querySelector("input");
     cb.addEventListener("change", () => {
       lines[i] = { ...toggleComplete(l, cb.checked), index: i };
       reparse(i);
       markDirty(); render();
     });
-    btnEdit.addEventListener("click", () => openEdit(i));
-    btnDel.addEventListener("click", () => {
-      if (confirm("このタスクを削除しますか？\n" + l.raw)) {
-        lines.splice(i, 1);
-        markDirty(); render();
-      }
+    // 行タップで編集モーダルを開く（チェックボックス・リンクの操作は除外）
+    li.addEventListener("click", (e) => {
+      if (e.target.closest("input, a, button")) return;
+      openEdit(i);
     });
     ul.appendChild(li);
   }
@@ -521,6 +515,16 @@ function bind() {
     updatePreview();
   });
   $("ed-save").addEventListener("click", (e) => { e.preventDefault(); saveEdit(); $("edit-dialog").close(); });
+  $("ed-delete").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (editingIndex < 0) return;
+    if (confirm("このタスクを削除しますか？\n" + lines[editingIndex].raw)) {
+      lines.splice(editingIndex, 1);
+      editingIndex = -1;
+      markDirty(); render();
+      $("edit-dialog").close();
+    }
+  });
 
   // DnD
   const dz = $("drop-zone");

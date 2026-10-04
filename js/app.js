@@ -91,6 +91,8 @@ async function persist() {
     } catch (e) {
       console.error(e);
       $("save-state").textContent = "保存失敗";
+      // 逃げ道: ⬇保存(別名保存フローはユーザー操作起点なので権限を取り直せる)
+      $("btn-download").hidden = false;
       toast("保存に失敗しました: " + (e.message ?? e));
     }
   } else {
@@ -397,9 +399,10 @@ function bind() {
   $("btn-pick").addEventListener("click", async () => {
     if (supportsFS) {
       try {
-        const { handle, name, text, lastModified: lm } = await pickFile();
+        const { handle, name, text, lastModified: lm, writable } = await pickFile();
         lastModified = lm;
         loadText(name, text, handle);
+        if (!writable) toast("書き込み権限が拒否されました。閲覧のみになります");
       } catch (e) {
         if (e?.name !== "AbortError") toast("開けませんでした: " + (e.message ?? e));
       }

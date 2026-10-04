@@ -86,10 +86,13 @@ export async function pickFile() {
     multiple: false,
   });
   await verifyPermission(handle, false);
+  // 書き込み権限は「開く」操作中(ユーザー操作中)に取得するのが必須。
+  // デバウンス後の自動保存からは権限プロンプトを出せないため、後回しにすると保存が失敗する
+  const writable = await verifyPermission(handle, true);
   const file = await handle.getFile();
   const text = await file.text();
   await rememberHandle(handle, file.name);
-  return { handle, name: file.name, text, lastModified: file.lastModified };
+  return { handle, name: file.name, text, lastModified: file.lastModified, writable };
 }
 
 export async function createFile(suggestedName = "todo.txt") {

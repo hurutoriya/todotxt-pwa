@@ -106,7 +106,10 @@ export async function createFile(suggestedName = "todo.txt") {
 }
 
 export async function readHandle(handle) {
-  await verifyPermission(handle, false);
+  // 読み取りと同時に書き込み権限も確保する。操作起点(クリック等)から呼ばれれば
+  // プロンプトを出せるため、以降の自動保存が原本へ届く。操作外では拒否されるが
+  // 呼び出し側で捕捉されるため安全
+  await verifyPermission(handle, true);
   const file = await handle.getFile();
   return { name: file.name, text: await file.text(), lastModified: file.lastModified };
 }

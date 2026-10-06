@@ -19,6 +19,7 @@ x 2026-09-25 2026-09-20 Tim のプルリクをレビューする +TodoTxt @githu
 let lines = [];
 let fileName = "";
 let fileHandle = null;      // FileSystemFileHandle | null (fallback時は null)
+let pendingHandle = null;   // { handle, name } | null: 自動再リンク待ちのハンドル
 let fallbackMode = !supportsFS;
 let dirty = false;
 let lastModified = 0;
@@ -161,10 +162,42 @@ async function closeFile() {
   lines = [];
   fileName = "";
   fileHandle = null;
+  pendingHandle = null;
   dirty = false;
   await clearContentSnapshot();
   showWelcome(true);
   refreshRecents();
+}
+
+// リロード後に失効した書き込み権限を、最初のユーザー操作時に自動で取り直す。
+// ブラウザ制約上プロンプトには操作起点が必須のため、完全無人での再接続はできない。
+// セッション内1回のみ試行し、拒否時は手動の再リンクボタンに委ねる
+let autoRelinkDone = false;
+function armAutoRelink() {
+  if (!supportsFS || autoRelinkDone) return;
+  autoRelinkDone = true;
+  const tryGrant = async () => {
+    const p = pendingHandle;
+    if (!p || p.name !== fileName) return;
+    try {
+      if (await verifyPermission(p.handle, true)) {
+        pendingHandle = null;
+        fileHandle = p.handle;
+        fallbackMode = false;
+        dirty = true; // スナップショット内容を原本へフラッシュ
+        showWelcome(false);
+        if (await persist(false)) toast("原本への自動保存を再開しました");
+      } else {
+        pendingHandle = null;
+        console.info("[relink] auto grant denied; use the relink button");
+      }
+    } catch (e) {
+      console.warn("[relink] auto grant failed:", e);
+      pendingHandle = null;
+    }
+  };
+  window.addEventListener("pointerdown", tryGrant, { once: true });
+  window.addEventListener("keydown", tryGrant, { once: true });
 }
 
 // ---- filtering / sorting ----
@@ -444,6 +477,7 @@ async function refreshRecents() {
         // 最近ファイルからの再オープン時も書き込み権限を確保する（クリック中＝操作起点なのでプロンプト可）
         const writable = await verifyPermission(found.handle, true);
         lastModified = lm;
+        pendingHandle = null;
         loadText(found.name, text, found.handle);
         if (!writable) toast("読み取り専用で開きました（書き込み権限が拒否されました）");
       } catch (e) {
@@ -463,6 +497,7 @@ function bind() {
       try {
         const { handle, name, text, lastModified: lm, writable } = await pickFile();
         lastModified = lm;
+        pendingHandle = null;
         loadText(name, text, handle);
         if (!writable) toast("書き込み権限が拒否されました。閲覧のみになります");
       } catch (e) {
@@ -477,6 +512,7 @@ function bind() {
     if (supportsFS) {
       try {
         const { handle, name } = await createFile("todo.txt");
+        pendingHandle = null;
         loadText(name, "", handle);
       } catch (e) {
         if (e?.name !== "AbortError") toast("作成できませんでした: " + (e.message ?? e));
@@ -551,6 +587,7 @@ function bind() {
       if (!supportsFS) { toast("このブラウザは直接保存に未対応です。⬇保存でダウンロードしてください"); return; }
       try {
         const { handle, name, text, lastModified: lm, writable } = await pickFile();
+        pendingHandle = null;
         // 同名ファイルならメモリ内容を優先して上書き、別名なら開き直す
         if (name === fileName && lines.length) {
           fileHandle = handle;
@@ -703,20 +740,28 @@ async function init() {
     if (supportsFS) {
       try {
         const stored = await getStoredHandle(snap.name);
-        if (stored && (await queryGranted(stored.handle, true))) {
-          const { text, lastModified: lm } = await readHandle(stored.handle);
-          loadText(stored.name, text, stored.handle);
-          lastModified = lm;
-          saveContentSnapshot(stored.name, text);
-          toast("前回のファイルを自動で開きました");
-          restored = true;
+        if (stored) {
+          if (await queryGranted(stored.handle, true)) {
+            const { text, lastModified: lm } = await readHandle(stored.handle);
+            loadText(stored.name, text, stored.handle);
+            lastModified = lm;
+            saveContentSnapshot(stored.name, text);
+            toast("前回のファイルを自動で開きました");
+            restored = true;
+          } else {
+            // 権限は失効しているがハンドルは残っている。最初の操作で自動再接続する
+            pendingHandle = { handle: stored.handle, name: snap.name };
+          }
         }
       } catch (e) { console.warn("ハンドル自動復元に失敗、スナップショットを使用:", e); }
     }
     if (!restored) {
       loadText(snap.name, snap.text, null);
-      toast("前回の内容をブラウザから復元しました");
+      toast(pendingHandle
+        ? "前回の内容を復元しました。最初の操作時に原本保存を再開します"
+        : "前回の内容をブラウザから復元しました");
     }
+    armAutoRelink();
   } else {
     showWelcome(true);
   }

@@ -25,6 +25,7 @@ let dirty = false;
 let lastModified = 0;
 let saveTimer = 0;
 let editingIndex = -1;      // lines 配列上のインデックス
+let editingCompleted = false; // 編集中タスクの完了状態（編集画面では変更不可、一覧のチェックで切替）
 let editingCompletionDate = null; // 編集中タスクの完了日（表示はしないが保持する）
 let deferredPrompt = null;
 
@@ -397,11 +398,11 @@ function bodyWithDue(body, due) {
 /** ダイアログの各欄から構造化タスクを組み立てる */
 function readEditForm() {
   const t = {
-    completed: $("ed-done").checked,
+    completed: editingCompleted,
     priority: $("ed-pri").value || null,
     creationDate: $("ed-created").value || null,
-    // 完了日は表示しない。完了時は今日を自動付与し、編集中は既存値を保持する
-    completionDate: $("ed-done").checked ? (editingCompletionDate || todayStr()) : null,
+    // 完了日は表示しない。完了済みのままなら既存値を保持する
+    completionDate: editingCompleted ? (editingCompletionDate || todayStr()) : null,
     body: bodyWithDue($("ed-body").value.trim(), $("ed-due").value || null),
   };
   return t;
@@ -411,7 +412,7 @@ function openEdit(i) {
   editingIndex = i;
   const l = lines[i];
   $("edit-title").textContent = `タスク #${i + 1} を編集`;
-  $("ed-done").checked = l.completed;
+  editingCompleted = l.completed;
   $("ed-pri").value = l.priority ?? "";
   $("ed-created").value = l.creationDate ?? "";
   editingCompletionDate = l.completionDate ?? null;
@@ -624,7 +625,7 @@ function bind() {
   });
 
   // 編集ダイアログの連動（構造化欄→プレビュー更新のみ）
-  for (const id of ["ed-done", "ed-pri", "ed-created", "ed-due", "ed-body"]) {
+  for (const id of ["ed-pri", "ed-created", "ed-due", "ed-body"]) {
     $(id).addEventListener("input", updatePreview);
   }
   $("ed-save").addEventListener("click", (e) => { e.preventDefault(); saveEdit(); $("edit-dialog").close(); });

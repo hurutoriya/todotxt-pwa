@@ -1,0 +1,32 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: browser-actions/setup-chrome@latest
+      - run: pip install selenium
+      - name: Start local server
+        run: |
+          nohup python3 -m http.server 8000 --directory . > /tmp/http.log 2>&1 &
+          sleep 2
+          curl -sf http://127.0.0.1:8000/index.html > /dev/null
+      - name: Run E2E (app)
+        env:
+          E2E_URL: http://127.0.0.1:8000/
+        run: python3 tests/e2e_test.py
+      - name: Run E2E (PWA update flow)
+        env:
+          E2E_URL: http://127.0.0.1:8000/
+        run: python3 tests/e2e_update.py
+      - name: Ensure sw.js untouched by tests
+        run: git diff --exit-code -- sw.js

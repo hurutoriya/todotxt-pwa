@@ -38,6 +38,20 @@ python3 -m http.server 8000
 # http://localhost:8000/ を開く
 ```
 
+## テスト
+
+`tests/` に Selenium 製のE2Eがあります（行タップで編集モーダルが開くこと等を明示アサートし、デグレを防止）。push/PRでCI実行されます。
+
+```sh
+pip install selenium
+python3 -m http.server 8000 &
+python3 tests/e2e_test.py     # アプリ機能全般
+python3 tests/e2e_update.py   # PWA更新フロー（sw.jsは自動で元に戻ります）
+
+# 本番URLに対して実行する場合
+E2E_URL=https://hurutoriya.github.io/todotxt-pwa/ python3 tests/e2e_test.py
+```
+
 ## 構成
 
 ```

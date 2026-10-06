@@ -85,6 +85,11 @@ try:
     wait.until(EC.invisibility_of_element_located((By.ID, "edit-dialog")))
     bodies = [e.text for e in driver.find_elements(By.CSS_SELECTOR, "#task-list .task")]
     check("due saved to list", any("実機テストタスク" in b and "2026-10-05" in b for b in bodies))
+    tasks = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
+    due_task = next(t for t in tasks if "実機テストタスク" in t.text)
+    check("due hidden in body, shown in meta",
+          "due:" not in due_task.find_element(By.CSS_SELECTOR, ".body").text
+          and "2026-10-05" in due_task.find_element(By.CSS_SELECTOR, ".meta").text)
 
     # URLはクリッカブルに、メールアドレス・2+2は誤検出しない
     driver.find_element(By.ID, "quick-add").send_keys("資料を確認する https://example.com/todo?x=1&y=2")

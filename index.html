@@ -26,7 +26,8 @@
     </div>
     <nav class="header-actions">
       <button id="btn-reload" class="btn ghost" title="ファイルから再読込" hidden>↻</button>
-      <button id="btn-download" class="btn ghost" title="ファイルをダウンロード保存" hidden>⬇ 保存</button>
+      <button id="btn-relink" class="btn ghost" title="元のファイルを選択し直して直接保存できるようにする" hidden>🔗 再リンク</button>
+      <button id="btn-download" class="btn ghost" title="上書き保存（直接保存できない場合はダウンロード保存）" hidden>⬇ 保存</button>
       <button id="btn-close" class="btn ghost" title="ファイルを閉じる">✕</button>
       <button id="btn-install" class="btn ghost" hidden>＋ インストール</button>
     </nav>
@@ -76,9 +77,8 @@
         <option value="D">D</option><option value="E">E</option><option value="NONE">なし</option>
       </select>
       <select id="f-sort" title="並び替え">
-        <option value="default">並び: ファイル順</option>
+        <option value="due" selected>並び: 期日順</option>
         <option value="priority">優先度 → 期日順</option>
-        <option value="due">期日順</option>
         <option value="created">作成日順</option>
       </select>
       <label class="check"><input type="checkbox" id="f-show-done" checked /> 完了を表示</label>

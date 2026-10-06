@@ -27,7 +27,7 @@ let editingIndex = -1;      // lines 配列上のインデックス
 let editingCompletionDate = null; // 編集中タスクの完了日（表示はしないが保持する）
 let deferredPrompt = null;
 
-const filters = { q: "", project: "", context: "", priority: "", showDone: true, sort: "default" };
+const filters = { q: "", project: "", context: "", priority: "", showDone: true, sort: "due" };
 
 // ---- toast ----
 let toastTimer = 0;
@@ -63,9 +63,11 @@ function serialize() {
 function markDirty() {
   dirty = true;
   $("dirty-dot").classList.add("dirty");
-  $("btn-download").hidden = !fallbackMode ? true : false;
+  // 手動リトライ（ユーザー操作起点なら権限プロンプトが出せる）用に保存ボタンは常に表示
+  $("btn-download").hidden = false;
+  if ($("btn-relink")) $("btn-relink").hidden = !(fallbackMode && supportsFS);
   if (fallbackMode) {
-    $("save-state").textContent = "未保存";
+    $("save-state").textContent = supportsFS ? "未保存（原本未更新）" : "未保存";
     $("btn-download").hidden = false;
   } else {
     $("save-state").textContent = "保存中…";
@@ -76,11 +78,11 @@ function markDirty() {
   saveTimer = setTimeout(persist, 600);
 }
 
-async function persist() {
+async function persist(notify = true) {
   const text = serialize();
   // disk成否に関わらずブラウザ内に永続化（次回起動時に自動復元される）
   saveContentSnapshot(fileName, text);
-  if (!dirty) return;
+  if (!dirty) return true;
   if (fileHandle) {
     try {
       await writeHandle(fileHandle, text);
@@ -89,16 +91,27 @@ async function persist() {
       dirty = false;
       $("dirty-dot").classList.remove("dirty");
       $("save-state").textContent = "保存済み ✓";
+      // 直接保存できている間は再リンク不要。保存ボタンはクリーン時は隠す
+      if ($("btn-relink")) $("btn-relink").hidden = true;
+      $("btn-download").hidden = !fallbackMode;
+      console.info(`[save] overwrote ${fileName} (${text.length} chars)`);
+      if (notify) toast("更新完了しました");
+      return true;
     } catch (e) {
       console.error(e);
       $("save-state").textContent = "保存失敗";
-      // 逃げ道: ⬇保存(別名保存フローはユーザー操作起点なので権限を取り直せる)
+      // 逃げ道: ⬇保存(ユーザー操作起点なら権限を取り直せる)。再リンクも促す
       $("btn-download").hidden = false;
-      toast("保存に失敗しました: " + (e.message ?? e));
+      if ($("btn-relink") && supportsFS) $("btn-relink").hidden = false;
+      if (notify) toast("保存に失敗しました: " + (e.message ?? e));
+      return false;
     }
   } else {
-    // fallback: ダウンロード待ち
-    $("save-state").textContent = "未保存";
+    // fallback: ハンドルなしでは原本を上書きできない。ダウンロード待ち
+    $("save-state").textContent = supportsFS ? "未保存（原本未更新）" : "未保存";
+    if ($("btn-relink") && supportsFS) $("btn-relink").hidden = false;
+    console.info(`[save] no handle for ${fileName}: kept in snapshot only`);
+    return false;
   }
 }
 
@@ -110,9 +123,11 @@ function showWelcome(show) {
   $("file-chip").hidden = show;
   $("btn-reload").hidden = true;
   $("btn-download").hidden = true;
+  if ($("btn-relink")) $("btn-relink").hidden = true;
   if (!show) {
     $("file-chip").hidden = false;
     $("btn-download").hidden = !fallbackMode;
+    if ($("btn-relink")) $("btn-relink").hidden = !(fallbackMode && supportsFS && fileName);
     $("btn-reload").hidden = !fileHandle;
   }
 }
@@ -128,8 +143,15 @@ function loadText(name, text, handle) {
   dirty = false;
   $("file-name").textContent = name;
   $("dirty-dot").classList.remove("dirty");
-  $("save-state").textContent = fileHandle ? "保存済み ✓" : "ブラウザに自動保存中";
+  $("save-state").textContent = fileHandle ? "保存済み ✓" : (supportsFS ? "ブラウザ保存中（原本未更新）" : "ブラウザに自動保存中");
   showWelcome(false);
+  // ハンドルなし（スナップショット復元・DnD・サンプル等）では原本に直接書けない旨を明示
+  if (!handle) {
+    console.info(`[open] ${name} without handle: direct save disabled (fallbackMode=${fallbackMode})`);
+    if (supportsFS && name && name !== "sample-todo.txt") {
+      toast("原本に直接保存するには🔗再リンクか📂選択し直しが必要です");
+    }
+  }
   render();
   toast(`${name} を開きました (${lines.length}件)`);
 }
@@ -145,6 +167,11 @@ async function closeFile() {
 }
 
 // ---- filtering / sorting ----
+// 基本ソートは期日順: 期限あり（古い＝近い順）が上、期限なしは罫線区切りの下に表示する。
+// 完了済みは末尾にまとめる。ファイル順オプションは廃止し、ファイル順は同順位時のタイ break のみ。
+function cmpStr(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
 function visibleLines() {
   const q = filters.q.trim().toLowerCase();
   let out = lines.map((l, i) => ({ l, i })).filter(({ l }) => {
@@ -160,15 +187,26 @@ function visibleLines() {
     const rank = (p) => (p ? p.charCodeAt(0) : 999);
     out.sort((a, b) =>
       (a.l.completed - b.l.completed) || (rank(a.l.priority) - rank(b.l.priority)) ||
-      ((dueOf(a.l) ?? "9999") < (dueOf(b.l) ?? "9999") ? -1 : 1) || (a.i - b.i));
-  } else if (filters.sort === "due") {
-    out.sort((a, b) =>
-      (a.l.completed - b.l.completed) ||
-      ((dueOf(a.l) ?? "9999") < (dueOf(b.l) ?? "9999") ? -1 : 1) || (a.i - b.i));
+      cmpStr(dueOf(a.l) ?? "9999", dueOf(b.l) ?? "9999") || (a.i - b.i));
   } else if (filters.sort === "created") {
     out.sort((a, b) =>
       (a.l.completed - b.l.completed) ||
-      ((a.l.creationDate ?? "9999") < (b.l.creationDate ?? "9999") ? -1 : 1) || (a.i - b.i));
+      cmpStr(a.l.creationDate ?? "9999", b.l.creationDate ?? "9999") || (a.i - b.i));
+  } else {
+    // 期日順（基本・default）。未知値もこちらにフォールバックする。
+    out.sort((a, b) => {
+      if (a.l.completed !== b.l.completed) return a.l.completed - b.l.completed;
+      if (!a.l.completed) {
+        const da = dueOf(a.l), db = dueOf(b.l);
+        const ha = da ? 0 : 1, hb = db ? 0 : 1;
+        if (ha !== hb) return ha - hb;
+        if (da && db && da !== db) return da < db ? -1 : 1;
+        return a.i - b.i;
+      }
+      const da = dueOf(a.l) ?? "9999", db = dueOf(b.l) ?? "9999";
+      if (da !== db) return da < db ? -1 : 1;
+      return a.i - b.i;
+    });
   }
   return out;
 }
@@ -222,7 +260,7 @@ function render() {
 
   const ul = $("task-list");
   ul.innerHTML = "";
-  for (const { l, i } of vis) {
+  const appendTask = ({ l, i }) => {
     const li = document.createElement("li");
     li.className = "task" + (l.completed ? " done" : "");
     const due = dueOf(l);
@@ -250,6 +288,30 @@ function render() {
       openEdit(i);
     });
     ul.appendChild(li);
+  };
+  // 期日順（基本）では「未完了・期限あり」と「それ以外」を罫線で区切る。
+  // vis は未完了期限あり → 未完了期限なし → 完了済みの順に整列済みのため、
+  // 先頭の未完了期限ありブロックの直後に区切りを挿入する。
+  const isDueMode = filters.sort !== "priority" && filters.sort !== "created";
+  if (isDueMode) {
+    const split = vis.findIndex(({ l }) => l.completed || !dueOf(l));
+    if (split > 0 && split < vis.length) {
+      const rest = vis.slice(split);
+      const hasNoDue = rest.some(({ l }) => !l.completed && !dueOf(l));
+      const hasDone = rest.some(({ l }) => l.completed);
+      const label = hasNoDue && hasDone ? "期限なし・完了済み" : hasDone ? "完了済み" : "期限なし";
+      vis.slice(0, split).forEach(appendTask);
+      const sep = document.createElement("li");
+      sep.className = "due-separator";
+      sep.setAttribute("aria-label", label);
+      sep.innerHTML = `<hr /><span>--- ${escapeHtml(label)} ---</span><hr />`;
+      ul.appendChild(sep);
+      rest.forEach(appendTask);
+    } else {
+      vis.forEach(appendTask);
+    }
+  } else {
+    vis.forEach(appendTask);
   }
   $("empty").hidden = vis.length !== 0;
 }
@@ -377,8 +439,12 @@ async function refreshRecents() {
         const found = await getStoredHandle(r.name);
         if (!found) { toast("ハンドルが見つかりません。再選択してください。"); return; }
         if (!(await verifyPermission(found.handle, false))) { toast("権限が拒否されました"); return; }
-        const { text } = await readHandle(found.handle);
+        const { text, lastModified: lm } = await readHandle(found.handle);
+        // 最近ファイルからの再オープン時も書き込み権限を確保する（クリック中＝操作起点なのでプロンプト可）
+        const writable = await verifyPermission(found.handle, true);
+        lastModified = lm;
         loadText(found.name, text, found.handle);
+        if (!writable) toast("読み取り専用で開きました（書き込み権限が拒否されました）");
       } catch (e) {
         console.error(e);
         toast("開けませんでした。再選択してください: " + (e.message ?? e));
@@ -448,26 +514,62 @@ function bind() {
     } catch (e) { toast("再読込に失敗: " + (e.message ?? e)); }
   });
   $("btn-download").addEventListener("click", async () => {
+    // 手動保存（ユーザー操作起点なので権限プロンプトが出せる）。
+    // 1) ハンドルあり → まず原本への上書きを試す 2) 失敗時のみ別名保存に進む 3) ハンドルなし → ダウンロード
     if (fileHandle && supportsFS) {
-      // 「名前を付けて保存」でハンドルを付け替えたい場合
+      dirty = true;
+      $("save-state").textContent = "保存中…";
+      if (await persist(false)) {
+        toast("更新完了しました");
+        return;
+      }
+      // persist内で失敗トースト済み。別名保存で逃がすか確認する
+      if (!confirm("上書き保存に失敗しました。名前を付けて保存しますか？")) return;
       try {
         const { handle, name } = await createFile(fileName || "todo.txt");
         fileHandle = handle; fileName = name;
         fallbackMode = false;
         $("file-name").textContent = name;
-        await persist();
-        dirty = false;
+        dirty = true;
+        if (await persist(false)) toast("更新完了しました");
+        else toast("別名保存しましたが上書きに失敗しました");
         showWelcome(false);
         render();
         return;
-      } catch (e) { if (e?.name === "AbortError") return; }
+      } catch (e) { if (e?.name === "AbortError") return; else { toast("別名保存に失敗: " + (e.message ?? e)); return; } }
     }
     downloadText(fileName || "todo.txt", serialize());
     dirty = false;
     $("dirty-dot").classList.remove("dirty");
     $("save-state").textContent = "ダウンロード保存済み";
-    toast("ダウンロードしました");
+    toast("ダウンロードしました（原本への上書きではありません）");
   });
+  // ハンドルなし状態から原本ファイルを選択し直して紐付ける（ユーザー操作起点＝権限取得可）
+  if ($("btn-relink")) {
+    $("btn-relink").addEventListener("click", async () => {
+      if (!supportsFS) { toast("このブラウザは直接保存に未対応です。⬇保存でダウンロードしてください"); return; }
+      try {
+        const { handle, name, text, lastModified: lm, writable } = await pickFile();
+        // 同名ファイルならメモリ内容を優先して上書き、別名なら開き直す
+        if (name === fileName && lines.length) {
+          fileHandle = handle;
+          fallbackMode = false;
+          $("file-name").textContent = name;
+          dirty = true;
+          showWelcome(false);
+          if (await persist(false)) toast(`${name} に再リンクして上書き保存しました`);
+          else toast("再リンクしましたが保存に失敗しました");
+          if (!writable) toast("書き込み権限が拒否されました。閲覧のみになります");
+        } else {
+          lastModified = lm;
+          loadText(name, text, handle);
+          if (!writable) toast("書き込み権限が拒否されました。閲覧のみになります");
+        }
+      } catch (e) {
+        if (e?.name !== "AbortError") toast("開けませんでした: " + (e.message ?? e));
+      }
+    });
+  }
 
   // 追加
   $("btn-add").addEventListener("click", () => {
@@ -484,7 +586,12 @@ function bind() {
   $("f-project").addEventListener("change", (e) => { filters.project = e.target.value; render(); });
   $("f-context").addEventListener("change", (e) => { filters.context = e.target.value; render(); });
   $("f-priority").addEventListener("change", (e) => { filters.priority = e.target.value; render(); });
-  $("f-sort").addEventListener("change", (e) => { filters.sort = e.target.value; render(); });
+  $("f-sort").addEventListener("change", (e) => {
+    const v = e.target.value;
+    filters.sort = (v === "priority" || v === "created") ? v : "due";
+    e.target.value = filters.sort;
+    render();
+  });
   $("f-show-done").addEventListener("change", (e) => { filters.showDone = e.target.checked; render(); });
   $("btn-archive").addEventListener("click", () => {
     const doneLines = lines.filter((l) => l.completed);
@@ -642,7 +749,7 @@ async function init() {
     if (dirty) { e.preventDefault(); e.returnValue = ""; }
   });
   // 閉じる・バックグラウンド化の直前に保留中の保存をフラッシュする
-  const flush = () => { clearTimeout(saveTimer); persist(); };
+  const flush = () => { clearTimeout(saveTimer); persist(false); };
   window.addEventListener("pagehide", flush);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flush();

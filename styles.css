@@ -87,6 +87,12 @@ body {
 .tag-due { color: #ffd43b; }
 .tag-due.overdue { color: var(--danger); font-weight: 700; }
 .empty { text-align: center; color: var(--muted); padding: 32px; }
+.due-separator {
+  display: flex; align-items: center; gap: 12px; list-style: none;
+  color: var(--muted); font-size: 0.8rem; padding: 4px 2px; cursor: default;
+}
+.due-separator hr { flex: 1; border: none; border-top: 1px dashed var(--border); margin: 0; }
+.due-separator span { white-space: nowrap; }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); max-width: 520px; width: calc(100vw - 32px); }
 dialog::backdrop { background: rgba(0,0,0,.6); }
 .edit-form { display: flex; flex-direction: column; gap: 10px; }

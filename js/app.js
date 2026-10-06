@@ -111,6 +111,7 @@ async function persist(notify = true) {
     $("save-state").textContent = supportsFS ? "未保存（原本未更新）" : "未保存";
     if ($("btn-relink") && supportsFS) $("btn-relink").hidden = false;
     console.info(`[save] no handle for ${fileName}: kept in snapshot only`);
+    if (notify) toast("ブラウザに保存しました（原本未更新）");
     return false;
   }
 }

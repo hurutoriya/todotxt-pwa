@@ -97,9 +97,6 @@
   <dialog id="edit-dialog">
     <form method="dialog" class="edit-form" id="edit-form">
       <h3 id="edit-title">タスクを編集</h3>
-      <label>本文 (todo.txt 1行)
-        <textarea id="ed-raw" rows="3" spellcheck="false"></textarea>
-      </label>
       <div class="grid2">
         <label class="check"><input type="checkbox" id="ed-done" /> 完了 (x)</label>
         <label>優先度
@@ -114,8 +111,9 @@
         <label>作成日 <input type="date" id="ed-created" /></label>
         <label>期日 <input type="date" id="ed-due" /></label>
       </div>
-      <label>説明 (プロジェクト + / コンテキスト @ / 期日 due:YYYY-MM-DD を含められます)
-        <input type="text" id="ed-body" />
+      <label>タスク内容
+        <input type="text" id="ed-body" placeholder="例: 牛乳を買う +買い物 @外出" />
+        <span class="hint">プロジェクトは +名前、場所や手段は @名前 で書けます</span>
       </label>
       <div class="preview">プレビュー: <code id="ed-preview"></code></div>
       <menu>

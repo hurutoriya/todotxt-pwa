@@ -407,23 +407,10 @@ function readEditForm() {
   return t;
 }
 
-/** raw から構造欄へ逆反映（期日含む） */
-function fillEditForm(raw) {
-  const p = parseLine(raw);
-  $("ed-done").checked = p.completed;
-  $("ed-pri").value = p.priority ?? "";
-  $("ed-created").value = p.creationDate ?? "";
-  editingCompletionDate = p.completionDate ?? null;
-  $("ed-body").value = p.body;
-  const d = p.fields?.due?.[0];
-  $("ed-due").value = d && isValidDate(d) ? d : "";
-}
-
 function openEdit(i) {
   editingIndex = i;
   const l = lines[i];
   $("edit-title").textContent = `タスク #${i + 1} を編集`;
-  $("ed-raw").value = l.raw;
   $("ed-done").checked = l.completed;
   $("ed-pri").value = l.priority ?? "";
   $("ed-created").value = l.creationDate ?? "";
@@ -431,10 +418,9 @@ function openEdit(i) {
   $("ed-body").value = l.body;
   const d = l.fields?.due?.[0];
   $("ed-due").value = d && isValidDate(d) ? d : "";
-  // 作成日が空の未完了タスクは今日で自動FILLし、raw欄にも反映する
+  // 作成日が空の未完了タスクは今日で自動FILLする
   if (!l.creationDate && !l.completed) {
     $("ed-created").value = todayStr();
-    $("ed-raw").value = stringify(readEditForm());
   }
   updatePreview();
   $("edit-dialog").showModal();
@@ -446,11 +432,7 @@ function updatePreview() {
 
 function saveEdit() {
   if (editingIndex < 0) return;
-  const raw = $("ed-raw").value.trim();
-  // raw欄がプレビューと一致しない＝直接raw編集とみなしてそのまま採用、構造不整合でも仕様上許容
-  const preview = $("ed-preview").textContent.trim();
-  const finalRaw = raw === lines[editingIndex].raw || raw === preview ? preview : raw || preview;
-  lines[editingIndex] = { ...parseLine(finalRaw, editingIndex) };
+  lines[editingIndex] = { ...parseLine(stringify(readEditForm()), editingIndex) };
   markDirty(); render();
 }
 
@@ -641,24 +623,10 @@ function bind() {
     toast("完了タスクを done.txt に保存し、一覧から除去しました");
   });
 
-  // 編集ダイアログの連動
+  // 編集ダイアログの連動（構造化欄→プレビュー更新のみ）
   for (const id of ["ed-done", "ed-pri", "ed-created", "ed-due", "ed-body"]) {
-    $(id).addEventListener("input", () => {
-      // body/構造を変えたら raw にも反映してプレビュー更新
-      if (id !== "ed-raw") {
-        $("ed-raw").value = stringify(readEditForm());
-      } else {
-        // raw直編集時は構造欄へ逆反映
-        try { fillEditForm($("ed-raw").value); } catch { /* ignore */ }
-      }
-      updatePreview();
-    });
+    $(id).addEventListener("input", updatePreview);
   }
-  // raw欄は上ループに含まれていないので別途
-  $("ed-raw").addEventListener("input", () => {
-    try { fillEditForm($("ed-raw").value); } catch { /* ignore */ }
-    updatePreview();
-  });
   $("ed-save").addEventListener("click", (e) => { e.preventDefault(); saveEdit(); $("edit-dialog").close(); });
   $("ed-delete").addEventListener("click", (e) => {
     e.preventDefault();

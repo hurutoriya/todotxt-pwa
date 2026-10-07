@@ -113,7 +113,7 @@ menu { display: flex; justify-content: space-between; align-items: center; gap: 
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 /* View Transitions: ネイティブアプリ風の画面遷移（非対応・低減設定時は無効） */
 ::view-transition-old(root),
-::view-transition-new(root) { animation-duration: 0.22s; animation-timing-function: ease-out; }
+::view-transition-new(root) { animation-duration: 0.32s; animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1); }
 ::view-transition-old(root) { animation-name: vt-fade-out; }
 ::view-transition-new(root) { animation-name: vt-fade-in; }
 html[data-vt-dir="forward"]::view-transition-old(root) { animation-name: vt-out-left; }
@@ -122,10 +122,10 @@ html[data-vt-dir="back"]::view-transition-old(root) { animation-name: vt-out-rig
 html[data-vt-dir="back"]::view-transition-new(root) { animation-name: vt-in-left; }
 @keyframes vt-fade-out { to { opacity: 0; } }
 @keyframes vt-fade-in { from { opacity: 0; } }
-@keyframes vt-out-left { to { opacity: 0; transform: translateX(-24px); } }
-@keyframes vt-in-right { from { opacity: 0; transform: translateX(24px); } }
-@keyframes vt-out-right { to { opacity: 0; transform: translateX(24px); } }
-@keyframes vt-in-left { from { opacity: 0; transform: translateX(-24px); } }
+@keyframes vt-out-left { to { opacity: 0; transform: translateX(-64px) scale(0.98); } }
+@keyframes vt-in-right { from { opacity: 0; transform: translateX(64px) scale(0.98); } }
+@keyframes vt-out-right { to { opacity: 0; transform: translateX(64px) scale(0.98); } }
+@keyframes vt-in-left { from { opacity: 0; transform: translateX(-64px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
   ::view-transition-new(root) { animation: none; }

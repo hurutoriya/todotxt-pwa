@@ -32,7 +32,17 @@ try:
     ph = driver.find_element(By.ID, "quick-add").get_attribute("placeholder")
     check("new app.js loaded (placeholder)", "自動付与" in (ph or ""), ph)
 
-    # サンプルで開始
+    # サンプルで開始（View Transitionの発火も記録する）
+    driver.execute_script("window.__vtSeen = []; new MutationObserver(() => window.__vtSeen.push(document.documentElement.dataset.vtDir)).observe(document.documentElement, {attributes: true, attributeFilter: ['data-vt-dir']})")
+    driver.find_element(By.ID, "btn-sample").click()
+    wait.until(EC.visibility_of_element_located((By.ID, "main")))
+    check("view transition forward fired",
+          "forward" in driver.execute_script("return window.__vtSeen"))
+    # 閉じる→選択画面に戻る（back遷移）→開き直して続行
+    driver.find_element(By.ID, "btn-close").click()
+    wait.until(EC.visibility_of_element_located((By.ID, "welcome")))
+    check("view transition back fired",
+          "back" in driver.execute_script("return window.__vtSeen"))
     driver.find_element(By.ID, "btn-sample").click()
     wait.until(EC.visibility_of_element_located((By.ID, "main")))
     n0 = len(driver.find_elements(By.CSS_SELECTOR, "#task-list .task"))
@@ -209,8 +219,16 @@ try:
           not driver.find_element(By.ID, "edit-dialog").is_displayed())
 
     # リロードしても前回内容が自動復元されるか（選択画面を挟まない）
+    # 復元完了の合図として「タスクあり＋welcome非表示」の両方を待つ
+    # （初回ペイント前はView Transitionのコールバックが遅延するため即時判定しない）
+    def restored(d):
+        try:
+            return (len(d.find_elements(By.CSS_SELECTOR, "#task-list .task")) > 0
+                    and not d.find_element(By.ID, "welcome").is_displayed())
+        except Exception:
+            return False
     driver.refresh()
-    wait.until(EC.visibility_of_element_located((By.ID, "main")))
+    WebDriverWait(driver, 15).until(restored)
     welcome_shown = driver.find_element(By.ID, "welcome").is_displayed()
     check("welcome skipped on restore", not welcome_shown)
     bodies = [e.text for e in driver.find_elements(By.CSS_SELECTOR, "#task-list .task")]

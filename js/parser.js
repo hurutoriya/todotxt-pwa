@@ -109,9 +109,12 @@ export function toggleComplete(line, done = !line.completed) {
   t.completed = done;
   if (done) {
     t.completionDate = t.completionDate || todayStr();
+    // 分単位の完了時刻を ctime 拡張に記録（仕様の日付枠は YYYY-MM-DD のまま）
+    t.body = withCtime(t.body, nowStamp());
   } else {
-    // 未完了に戻すときは完了日を落とし、作成日は残す（仕様の運用に合わせる）
+    // 未完了に戻すときは完了日・完了時刻を落とし、作成日は残す（仕様の運用に合わせる）
     t.completionDate = null;
+    t.body = withCtime(t.body, null);
   }
   return { ...t, raw: stringify({ ...t }) };
 }
@@ -119,4 +122,29 @@ export function toggleComplete(line, done = !line.completed) {
 export function dueOf(line) {
   const v = line.fields?.due?.[0];
   return v && isValidDate(v) ? v : null;
+}
+
+/** 現在時刻を YYYY-MM-DD-HH-MM 形式で返す（完了時刻の記録用） */
+export function nowStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}-${p(d.getMinutes())}`;
+}
+
+/** ctime 拡張値を { date, time } で返す。不正なら null */
+export function ctimeOf(line) {
+  const v = line.fields?.ctime?.[0];
+  const m = typeof v === "string" && v.match(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})$/);
+  if (!m || !isValidDate(m[1]) || +m[2] > 23 || +m[3] > 59) return null;
+  return { date: m[1], time: `${m[2]}:${m[3]}` };
+}
+
+export function stripCtime(body) {
+  return body.replace(/\bctime:\S+/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
+export function withCtime(body, stamp) {
+  const b = stripCtime(body);
+  if (!stamp) return b;
+  return b ? `${b} ctime:${stamp}` : `ctime:${stamp}`;
 }

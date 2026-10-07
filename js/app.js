@@ -1,4 +1,4 @@
-import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate } from "./parser.js";
+import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate, ctimeOf, stripCtime, withCtime } from "./parser.js";
 import {
   supportsFS, pickFile, createFile, readHandle, writeHandle,
   getRecents, getStoredHandle, verifyPermission, downloadText,
@@ -26,10 +26,12 @@ let lastModified = 0;
 let saveTimer = 0;
 let editingIndex = -1;      // lines 配列上のインデックス
 let editingCompleted = false; // 編集中タスクの完了状態（編集画面では変更不可、一覧のチェックで切替）
+let editingCtime = null; // 編集中タスクの完了時刻スタンプ YYYY-MM-DD-HH-MM（表示はしないが保持する）
 let editingCompletionDate = null; // 編集中タスクの完了日（表示はしないが保持する）
 let deferredPrompt = null;
 
 const filters = { q: "", project: "", context: "", priority: "", showDone: true, sort: "due" };
+let view = "list"; // "list" | "timeline"
 
 // ---- toast ----
 let toastTimer = 0;
@@ -258,11 +260,19 @@ function highlight(body, line) {
   for (let k = 0; k < parts.length; k++) {
     const tok = parts[k];
     if (tok === "" || /^\s+$/.test(tok)) { out.push(tok); continue; }
-    // 有効な期日はメタ行(〆)に表示済みのため本文では省略する（不正値は温存）
+    // 有効な期日・完了時刻はメタ行に表示済みのため本文では省略する（不正値は温存）
     if (/^due:\d{4}-\d{2}-\d{2}$/.test(tok) && isValidDate(tok.slice(4))) {
       if (parts[k + 1] && /^\s+$/.test(parts[k + 1])) k++;
       else if (out.length && /^\s+$/.test(out[out.length - 1])) out.pop();
       continue;
+    }
+    {
+      const mCT = tok.match(/^ctime:(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})$/);
+      if (mCT && isValidDate(mCT[1]) && +mCT[2] < 24 && +mCT[3] < 60) {
+        if (parts[k + 1] && /^\s+$/.test(parts[k + 1])) k++;
+        else if (out.length && /^\s+$/.test(out[out.length - 1])) out.pop();
+        continue;
+      }
     }
     // URL (http/https のみ。javascript: 等は対象外)
     const mUrl = tok.match(/^(https?:\/\/[^\s<]+)/i);
@@ -294,6 +304,37 @@ function highlight(body, line) {
 }
 
 // ---- render ----
+function appendTask(ul, { l, i }, time = null) {
+  const li = document.createElement("li");
+  li.className = "task" + (l.completed ? " done" : "");
+  const due = dueOf(l);
+  const overdue = due && due < todayStr() && !l.completed;
+  li.innerHTML = `
+    <input type="checkbox" ${l.completed ? "checked" : ""} aria-label="完了切替" />
+    <div class="task-main">
+      <div class="body">${highlight(l.body || escapeHtml("(空)"), l)}</div>
+      <div class="meta">
+        ${time ? `<span class="tl-time">${escapeHtml(time)}</span>` : ""}
+        ${l.priority ? `<span class="pri pri-${l.priority}">${escapeHtml(l.priority)}</span>` : ""}
+        ${l.creationDate ? `<span>作成 ${escapeHtml(l.creationDate)}</span>` : ""}
+        ${l.completionDate ? `<span>完了 ${escapeHtml(l.completionDate)}</span>` : ""}
+        ${due ? `<span class="tag-due${overdue ? " overdue" : ""}">〆 ${escapeHtml(due)}${overdue ? " 期限切れ" : ""}</span>` : ""}
+      </div>
+    </div>`;
+  const cb = li.querySelector("input");
+  cb.addEventListener("change", () => {
+    lines[i] = { ...toggleComplete(l, cb.checked), index: i };
+    reparse(i);
+    markDirty(); render();
+  });
+  // 行タップで編集モーダルを開く（チェックボックス・リンクの操作は除外）
+  li.addEventListener("click", (e) => {
+    if (e.target.closest("input, a, button")) return;
+    openEdit(i);
+  });
+  ul.appendChild(li);
+}
+
 function render() {
   // フィルタ選択肢の更新
   const projs = new Set(), ctxs = new Set();
@@ -301,41 +342,14 @@ function render() {
   fillSelect($("f-project"), "+ Project: すべて", [...projs].sort(), filters.project);
   fillSelect($("f-context"), "@ Context: すべて", [...ctxs].sort(), filters.context);
 
+  if (view === "timeline") { renderTimeline(projs); return; }
+
   const vis = visibleLines();
   const done = lines.filter((l) => l.completed).length;
   $("stats").textContent = `全 ${lines.length} 件 · 未完了 ${lines.length - done} 件 · 完了 ${done} 件 · 表示 ${vis.length} 件 · プロジェクト ${projs.size} · コンテキスト ${ctxs.size}`;
 
   const ul = $("task-list");
   ul.innerHTML = "";
-  const appendTask = ({ l, i }) => {
-    const li = document.createElement("li");
-    li.className = "task" + (l.completed ? " done" : "");
-    const due = dueOf(l);
-    const overdue = due && due < todayStr() && !l.completed;
-    li.innerHTML = `
-      <input type="checkbox" ${l.completed ? "checked" : ""} aria-label="完了切替" />
-      <div class="task-main">
-        <div class="body">${highlight(l.body || escapeHtml("(空)"), l)}</div>
-        <div class="meta">
-          ${l.priority ? `<span class="pri pri-${l.priority}">${escapeHtml(l.priority)}</span>` : ""}
-          ${l.creationDate ? `<span>作成 ${escapeHtml(l.creationDate)}</span>` : ""}
-          ${l.completionDate ? `<span>完了 ${escapeHtml(l.completionDate)}</span>` : ""}
-          ${due ? `<span class="tag-due${overdue ? " overdue" : ""}">〆 ${escapeHtml(due)}${overdue ? " 期限切れ" : ""}</span>` : ""}
-        </div>
-      </div>`;
-    const cb = li.querySelector("input");
-    cb.addEventListener("change", () => {
-      lines[i] = { ...toggleComplete(l, cb.checked), index: i };
-      reparse(i);
-      markDirty(); render();
-    });
-    // 行タップで編集モーダルを開く（チェックボックス・リンクの操作は除外）
-    li.addEventListener("click", (e) => {
-      if (e.target.closest("input, a, button")) return;
-      openEdit(i);
-    });
-    ul.appendChild(li);
-  };
   // 期日順（基本）では「未完了・期限あり」と「それ以外」を罫線で区切る。
   // vis は未完了期限あり → 未完了期限なし → 完了済みの順に整列済みのため、
   // 先頭の未完了期限ありブロックの直後に区切りを挿入する。
@@ -347,20 +361,89 @@ function render() {
       const hasNoDue = rest.some(({ l }) => !l.completed && !dueOf(l));
       const hasDone = rest.some(({ l }) => l.completed);
       const label = hasNoDue && hasDone ? "期限なし・完了済み" : hasDone ? "完了済み" : "期限なし";
-      vis.slice(0, split).forEach(appendTask);
+      vis.slice(0, split).forEach((d) => appendTask(ul, d));
       const sep = document.createElement("li");
       sep.className = "due-separator";
       sep.setAttribute("aria-label", label);
       sep.innerHTML = `<hr /><span>--- ${escapeHtml(label)} ---</span><hr />`;
       ul.appendChild(sep);
-      rest.forEach(appendTask);
+      rest.forEach((d) => appendTask(ul, d));
     } else {
-      vis.forEach(appendTask);
+      vis.forEach((d) => appendTask(ul, d));
     }
   } else {
-    vis.forEach(appendTask);
+    vis.forEach((d) => appendTask(ul, d));
   }
+  $("empty").innerHTML = "<p>該当するタスクがありません。</p>";
   $("empty").hidden = vis.length !== 0;
+}
+
+// ---- timeline: 完了日ごとのグルーピング表示 ----
+function dayLabel(ds) {
+  if (!ds) return "日付不明";
+  const t = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const fmt = (d) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  const wd = ["日", "月", "火", "水", "木", "金", "土"][new Date(ds + "T00:00:00").getDay()];
+  if (ds === fmt(t)) return `${ds}（${wd}・今日）`;
+  if (ds === fmt(new Date(t.getTime() - 86400000))) return `${ds}（${wd}・昨日）`;
+  return `${ds}（${wd}）`;
+}
+
+function renderTimeline() {
+  const q = filters.q.trim().toLowerCase();
+  const items = lines.map((l, i) => ({ l, i })).filter(({ l }) => {
+    if (!l.completed) return false;
+    if (q && !l.raw.toLowerCase().includes(q)) return false;
+    if (filters.project && !l.projects.includes(filters.project)) return false;
+    if (filters.context && !l.contexts.includes(filters.context)) return false;
+    if (filters.priority === "NONE" && l.priority) return false;
+    else if (filters.priority && filters.priority !== "NONE" && l.priority !== filters.priority) return false;
+    return true;
+  });
+  const groups = new Map();
+  for (const d of items) {
+    const key = d.l.completionDate || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  }
+  const keys = [...groups.keys()].sort((a, b) => {
+    if (!a) return 1;
+    if (!b) return -1;
+    return a < b ? 1 : -1;
+  });
+  for (const k of keys) {
+    groups.get(k).sort((a, b) => {
+      const ta = ctimeOf(a.l)?.time ?? "99:99";
+      const tb = ctimeOf(b.l)?.time ?? "99:99";
+      return ta < tb ? 1 : ta > tb ? -1 : a.i - b.i;
+    });
+  }
+  $("stats").textContent = `完了 ${items.length} 件 · ${keys.filter(Boolean).length} 日分（新しい順）`;
+  const ul = $("task-list");
+  ul.innerHTML = "";
+  for (const k of keys) {
+    const header = document.createElement("li");
+    header.className = "tl-date";
+    header.innerHTML = `<span>${escapeHtml(dayLabel(k))}</span><span class="muted">${groups.get(k).length}件</span>`;
+    ul.appendChild(header);
+    for (const d of groups.get(k)) {
+      appendTask(ul, d, ctimeOf(d.l)?.time ?? "--:--");
+    }
+  }
+  $("empty").innerHTML = "<p>完了タスクがありません</p>";
+  $("empty").hidden = items.length !== 0;
+}
+
+function setView(v) {
+  view = v;
+  $("view-list").classList.toggle("active", v === "list");
+  $("view-timeline").classList.toggle("active", v === "timeline");
+  if (v === "timeline" && !filters.showDone) {
+    filters.showDone = true;
+    $("f-show-done").checked = true;
+  }
+  render();
 }
 
 function fillSelect(sel, label, values, current) {
@@ -413,9 +496,9 @@ function readEditForm() {
     completed: editingCompleted,
     priority: $("ed-pri").value || null,
     creationDate: $("ed-created").value || null,
-    // 完了日は表示しない。完了済みのままなら既存値を保持する
+    // 完了日・完了時刻は表示しない。完了済みのままなら既存値を保持する
     completionDate: editingCompleted ? (editingCompletionDate || todayStr()) : null,
-    body: bodyWithDue($("ed-body").value.trim(), $("ed-due").value || null),
+    body: withCtime(bodyWithDue($("ed-body").value.trim(), $("ed-due").value || null), editingCtime),
   };
   return t;
 }
@@ -428,7 +511,10 @@ function openEdit(i) {
   $("ed-pri").value = l.priority ?? "";
   $("ed-created").value = l.creationDate ?? "";
   editingCompletionDate = l.completionDate ?? null;
-  $("ed-body").value = l.body;
+  // 完了時刻・タスク内容は表示用に分離する（ctime は保存時に再付与）
+  const ct = ctimeOf(l);
+  editingCtime = ct ? `${ct.date}-${ct.time.replace(":", "-")}` : null;
+  $("ed-body").value = stripCtime(l.body);
   const d = l.fields?.due?.[0];
   $("ed-due").value = d && isValidDate(d) ? d : "";
   // 作成日が空の未完了タスクは今日で自動FILLする
@@ -615,6 +701,9 @@ function bind() {
   });
 
   // フィルタ
+  // 表示切替（一覧 / タイムライン）
+  $("view-list").addEventListener("click", () => setView("list"));
+  $("view-timeline").addEventListener("click", () => setView("timeline"));
   $("q").addEventListener("input", (e) => { filters.q = e.target.value; render(); });
   $("f-project").addEventListener("change", (e) => { filters.project = e.target.value; render(); });
   $("f-context").addEventListener("change", (e) => { filters.context = e.target.value; render(); });

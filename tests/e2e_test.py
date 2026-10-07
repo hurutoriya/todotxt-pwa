@@ -1,4 +1,4 @@
-import datetime, os, sys
+import datetime, os, re, sys
 
 CHROMEDRIVER = os.environ.get("CHROMEDRIVER_PATH")  # 未設定時は Selenium Manager が自動取得
 from selenium import webdriver
@@ -130,6 +130,10 @@ try:
         cb = t.find_element(By.CSS_SELECTOR, 'input[type="checkbox"]')
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", cb)
         cb.click()
+    def click_id(bid):
+        el = driver.find_element(By.ID, bid)
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", el)
+        el.click()
     open_edit_for("優先度付きタスク")
     check("no done checkbox in edit modal", len(driver.find_elements(By.ID, "ed-done")) == 0)
     driver.find_element(By.ID, "ed-cancel").click()
@@ -141,9 +145,26 @@ try:
     open_edit_for("優先度付きタスク")
     preview = driver.find_element(By.ID, "ed-preview").text
     check("completion date preserved on re-edit", f"x {TODAY}" in preview, preview)
+    check("ctime recorded in preview",
+          re.search(r"ctime:\d{4}-\d{2}-\d{2}-\d{2}-\d{2}", preview) is not None, preview)
     driver.find_element(By.ID, "ed-save").click()
     wait.until(EC.invisibility_of_element_located((By.ID, "edit-dialog")))
-    toggle_list_checkbox("優先度付きタスク")
+    # タイムライン: 日付グルーピング＋時刻表示
+    click_id("view-timeline")
+    wait.until(lambda d: len(d.find_elements(By.CSS_SELECTOR, ".tl-date")) > 0)
+    dates = [e.text for e in driver.find_elements(By.CSS_SELECTOR, ".tl-date")]
+    check("timeline groups by today", any(TODAY in t and "今日" in t for t in dates), dates)
+    entries = [e.text for e in driver.find_elements(By.CSS_SELECTOR, "#task-list .task")]
+    check("timeline entry with time",
+          any("優先度付きタスク" in e and re.search(r"\d{2}:\d{2}", e) for e in entries))
+    # タイムライン上で解除 → 消える → 一覧に戻すと未完了で存在
+    ts = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
+    t = next(x for x in ts if "優先度付きタスク" in x.text)
+    cb = t.find_element(By.CSS_SELECTOR, 'input[type="checkbox"]')
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", cb)
+    cb.click()
+    wait.until(lambda d: not any("優先度付きタスク" in x.text for x in d.find_elements(By.CSS_SELECTOR, "#task-list .task")))
+    click_id("view-list")
     wait.until(lambda d: any("優先度付きタスク" in x.text and "done" not in x.get_attribute("class") for x in d.find_elements(By.CSS_SELECTOR, "#task-list .task")))
     check("task unmarked", True)
 

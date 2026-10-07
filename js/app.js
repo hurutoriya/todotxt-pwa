@@ -119,21 +119,45 @@ async function persist(notify = true) {
   }
 }
 
-// ---- open / close ----
-function showWelcome(show) {
-  $("welcome").hidden = !show;
-  $("welcome").style.display = show ? "" : "none";
-  $("main").hidden = show;
-  $("file-chip").hidden = show;
-  $("btn-reload").hidden = true;
-  $("btn-download").hidden = true;
-  if ($("btn-relink")) $("btn-relink").hidden = true;
-  if (!show) {
-    $("file-chip").hidden = false;
-    $("btn-download").hidden = !fallbackMode;
-    if ($("btn-relink")) $("btn-relink").hidden = !(fallbackMode && supportsFS && fileName);
-    $("btn-reload").hidden = !fileHandle;
+// ---- view transition ----
+// 画面切替（welcome⇔main）のみ transtion させる。一覧の再描画は即時更新
+// （タイピング毎のアニメは煩わしく、ヘッドレス等の描画環境差異の影響も避ける）
+function canTransition() {
+  return typeof document.startViewTransition === "function" &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+// dir: ""（薄い crossfade）/ "forward"（右から入る）/ "back"（左から戻る）
+function transitionTo(update, dir = "") {
+  if (dir) document.documentElement.dataset.vtDir = dir;
+  const done = () => { delete document.documentElement.dataset.vtDir; };
+  if (!canTransition()) { update(); done(); return; }
+  try {
+    document.startViewTransition(() => update()).finished.then(done, done);
+  } catch {
+    update(); done();
   }
+}
+
+// ---- open / close ----
+function showWelcome(show, dir = "") {
+  const cur = !$("welcome").hidden;
+  const apply = () => {
+    $("welcome").hidden = !show;
+    $("welcome").style.display = show ? "" : "none";
+    $("main").hidden = show;
+    $("file-chip").hidden = show;
+    $("btn-reload").hidden = true;
+    $("btn-download").hidden = true;
+    if ($("btn-relink")) $("btn-relink").hidden = true;
+    if (!show) {
+      $("file-chip").hidden = false;
+      $("btn-download").hidden = !fallbackMode;
+      if ($("btn-relink")) $("btn-relink").hidden = !(fallbackMode && supportsFS && fileName);
+      $("btn-reload").hidden = !fileHandle;
+    }
+  };
+  if (cur === show) { apply(); return; }
+  transitionTo(apply, dir);
 }
 
 function loadText(name, text, handle) {
@@ -148,7 +172,7 @@ function loadText(name, text, handle) {
   $("file-name").textContent = name;
   $("dirty-dot").classList.remove("dirty");
   $("save-state").textContent = fileHandle ? "保存済み ✓" : (supportsFS ? "ブラウザ保存中（原本未更新）" : "ブラウザに自動保存中");
-  showWelcome(false);
+  showWelcome(false, "forward");
   // ハンドルなし（スナップショット復元・DnD・サンプル等）では原本に直接書けない旨を明示
   if (!handle) {
     console.info(`[open] ${name} without handle: direct save disabled (fallbackMode=${fallbackMode})`);
@@ -156,6 +180,7 @@ function loadText(name, text, handle) {
       toast("原本に直接保存するには🔗再リンクか📂選択し直しが必要です");
     }
   }
+  // 画面遷移と同時の一覧描画はアニメ不要
   render();
   toast(`${name} を開きました (${lines.length}件)`);
 }
@@ -167,7 +192,7 @@ async function closeFile() {
   pendingHandle = null;
   dirty = false;
   await clearContentSnapshot();
-  showWelcome(true);
+  showWelcome(true, "back");
   refreshRecents();
 }
 

@@ -1,4 +1,4 @@
-import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate, ctimeOf, stripCtime, withCtime } from "./parser.js";
+import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate, ctimeOf, stripCtime, withCtime, nowStamp } from "./parser.js";
 import {
   supportsFS, pickFile, createFile, readHandle, writeHandle,
   getRecents, getStoredHandle, verifyPermission, downloadText,
@@ -474,6 +474,11 @@ function addRaw(raw) {
     raw = parsed.priority
       ? `(${parsed.priority}) ${todayStr()} ${parsed.body}`
       : `${todayStr()} ${raw}`;
+    parsed = parseLine(raw, lines.length);
+  }
+  // 完了済みとして追加する場合は完了時刻がなければ自動付与する
+  if (parsed.completed && !ctimeOf(parsed)) {
+    raw = `${raw} ctime:${nowStamp()}`;
     parsed = parseLine(raw, lines.length);
   }
   lines.push(parsed);

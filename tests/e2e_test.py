@@ -110,6 +110,19 @@ try:
     check("2+2 not project-tagged", len(mail_task.find_elements(By.CSS_SELECTOR, ".tag-proj")) == 0)
     check("project highlight kept", len(driver.find_elements(By.CSS_SELECTOR, ".tag-proj")) > 0)
 
+    # x付きで直接追加した完了タスクにも完了時刻が自動付与される
+    driver.find_element(By.ID, "quick-add").send_keys("x 直接追加の完了タスク")
+    driver.find_element(By.ID, "btn-add").click()
+    wait.until(lambda d: any("直接追加の完了タスク" in e.text for e in d.find_elements(By.CSS_SELECTOR, "#task-list .task")))
+    ts = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
+    next(t for t in ts if "直接追加の完了タスク" in t.text).click()
+    wait.until(EC.visibility_of_element_located((By.ID, "edit-dialog")))
+    preview = driver.find_element(By.ID, "ed-preview").text
+    check("ctime autofilled on completed quick-add",
+          preview.startswith("x ") and re.search(r"ctime:\d{4}-\d{2}-\d{2}-\d{2}-\d{2}", preview) is not None, preview)
+    driver.find_element(By.ID, "ed-cancel").click()
+    wait.until(EC.invisibility_of_element_located((By.ID, "edit-dialog")))
+
     # 優先度バッジは作成日の左側(メタ行先頭)に表示される
     tasks = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
     bank = next(t for t in tasks if "銀行に電話する" in t.text)

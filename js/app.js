@@ -30,7 +30,7 @@ let editingCtime = null; // 編集中タスクの完了時刻スタンプ YYYY-M
 let editingCompletionDate = null; // 編集中タスクの完了日（表示はしないが保持する）
 let deferredPrompt = null;
 
-const filters = { q: "", project: "", context: "", priority: "", showDone: true, sort: "due" };
+const filters = { q: "", project: "", context: "", priority: "", sort: "due" };
 
 // ---- toast ----
 let toastTimer = 0;
@@ -211,7 +211,6 @@ function cmpStr(a, b) {
 function visibleLines() {
   const q = filters.q.trim().toLowerCase();
   let out = lines.map((l, i) => ({ l, i })).filter(({ l }) => {
-    if (l.completed && !filters.showDone) return false;
     if (filters.project && !l.projects.includes(filters.project)) return false;
     if (filters.context && !l.contexts.includes(filters.context)) return false;
     if (filters.priority === "NONE" && l.priority) return false;
@@ -694,17 +693,6 @@ function bind() {
     e.target.value = filters.sort;
     render();
   });
-  $("f-show-done").addEventListener("change", (e) => { filters.showDone = e.target.checked; render(); });
-  $("btn-archive").addEventListener("click", () => {
-    const doneLines = lines.filter((l) => l.completed);
-    if (!doneLines.length) { toast("完了タスクはありません"); return; }
-    if (!confirm(`${doneLines.length} 件の完了タスクを除去しますか？\n(done.txt として別保存したい場合はキャンセル後ダウンロードしてください)`)) return;
-    downloadText("done.txt", doneLines.map((l) => l.raw).join("\n") + "\n");
-    lines = lines.filter((l) => !l.completed);
-    markDirty(); render();
-    toast("完了タスクを done.txt に保存し、一覧から除去しました");
-  });
-
   // 編集ダイアログの連動（構造化欄→プレビュー更新のみ）
   for (const id of ["ed-pri", "ed-created", "ed-due", "ed-body"]) {
     $(id).addEventListener("input", updatePreview);

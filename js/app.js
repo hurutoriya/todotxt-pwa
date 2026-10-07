@@ -31,7 +31,6 @@ let editingCompletionDate = null; // 編集中タスクの完了日（表示は�
 let deferredPrompt = null;
 
 const filters = { q: "", project: "", context: "", priority: "", showDone: true, sort: "due" };
-let view = "list"; // "list" | "timeline"
 
 // ---- toast ----
 let toastTimer = 0;
@@ -342,40 +341,43 @@ function render() {
   fillSelect($("f-project"), "+ Project: すべて", [...projs].sort(), filters.project);
   fillSelect($("f-context"), "@ Context: すべて", [...ctxs].sort(), filters.context);
 
-  if (view === "timeline") { renderTimeline(projs); return; }
-
   const vis = visibleLines();
   const done = lines.filter((l) => l.completed).length;
   $("stats").textContent = `全 ${lines.length} 件 · 未完了 ${lines.length - done} 件 · 完了 ${done} 件 · 表示 ${vis.length} 件 · プロジェクト ${projs.size} · コンテキスト ${ctxs.size}`;
 
   const ul = $("task-list");
   ul.innerHTML = "";
-  // 期日順（基本）では「未完了・期限あり」と「それ以外」を罫線で区切る。
-  // vis は未完了期限あり → 未完了期限なし → 完了済みの順に整列済みのため、
-  // 先頭の未完了期限ありブロックの直後に区切りを挿入する。
+  const incomplete = vis.filter(({ l }) => !l.completed);
+  const complete = vis.filter(({ l }) => l.completed);
+  // 未完了（期日順基本では期限あり→期限なしを罫線で区切る）
   const isDueMode = filters.sort !== "priority" && filters.sort !== "created";
   if (isDueMode) {
-    const split = vis.findIndex(({ l }) => l.completed || !dueOf(l));
-    if (split > 0 && split < vis.length) {
-      const rest = vis.slice(split);
-      const hasNoDue = rest.some(({ l }) => !l.completed && !dueOf(l));
-      const hasDone = rest.some(({ l }) => l.completed);
-      const label = hasNoDue && hasDone ? "期限なし・完了済み" : hasDone ? "完了済み" : "期限なし";
-      vis.slice(0, split).forEach((d) => appendTask(ul, d));
-      const sep = document.createElement("li");
-      sep.className = "due-separator";
-      sep.setAttribute("aria-label", label);
-      sep.innerHTML = `<hr /><span>--- ${escapeHtml(label)} ---</span><hr />`;
-      ul.appendChild(sep);
-      rest.forEach((d) => appendTask(ul, d));
+    const split = incomplete.findIndex(({ l }) => !dueOf(l));
+    if (split > 0 && split < incomplete.length) {
+      incomplete.slice(0, split).forEach((d) => appendTask(ul, d));
+      ul.appendChild(makeSeparator("期限なし"));
+      incomplete.slice(split).forEach((d) => appendTask(ul, d));
     } else {
-      vis.forEach((d) => appendTask(ul, d));
+      incomplete.forEach((d) => appendTask(ul, d));
     }
   } else {
-    vis.forEach((d) => appendTask(ul, d));
+    incomplete.forEach((d) => appendTask(ul, d));
+  }
+  // 完了履歴は常に包含し、日付グルーピングで表示する
+  if (complete.length) {
+    if (incomplete.length) ul.appendChild(makeSeparator("完了履歴"));
+    appendCompletedGroups(ul, complete);
   }
   $("empty").innerHTML = "<p>該当するタスクがありません。</p>";
   $("empty").hidden = vis.length !== 0;
+}
+
+function makeSeparator(label) {
+  const sep = document.createElement("li");
+  sep.className = "due-separator";
+  sep.setAttribute("aria-label", label);
+  sep.innerHTML = `<hr /><span>--- ${escapeHtml(label)} ---</span><hr />`;
+  return sep;
 }
 
 // ---- timeline: 完了日ごとのグルーピング表示 ----
@@ -390,17 +392,7 @@ function dayLabel(ds) {
   return `${ds}（${wd}）`;
 }
 
-function renderTimeline() {
-  const q = filters.q.trim().toLowerCase();
-  const items = lines.map((l, i) => ({ l, i })).filter(({ l }) => {
-    if (!l.completed) return false;
-    if (q && !l.raw.toLowerCase().includes(q)) return false;
-    if (filters.project && !l.projects.includes(filters.project)) return false;
-    if (filters.context && !l.contexts.includes(filters.context)) return false;
-    if (filters.priority === "NONE" && l.priority) return false;
-    else if (filters.priority && filters.priority !== "NONE" && l.priority !== filters.priority) return false;
-    return true;
-  });
+function appendCompletedGroups(ul, items) {
   const groups = new Map();
   for (const d of items) {
     const key = d.l.completionDate || "";
@@ -419,9 +411,6 @@ function renderTimeline() {
       return ta < tb ? 1 : ta > tb ? -1 : a.i - b.i;
     });
   }
-  $("stats").textContent = `完了 ${items.length} 件 · ${keys.filter(Boolean).length} 日分（新しい順）`;
-  const ul = $("task-list");
-  ul.innerHTML = "";
   for (const k of keys) {
     const header = document.createElement("li");
     header.className = "tl-date";
@@ -431,19 +420,6 @@ function renderTimeline() {
       appendTask(ul, d, ctimeOf(d.l)?.time ?? "--:--");
     }
   }
-  $("empty").innerHTML = "<p>完了タスクがありません</p>";
-  $("empty").hidden = items.length !== 0;
-}
-
-function setView(v) {
-  view = v;
-  $("view-list").classList.toggle("active", v === "list");
-  $("view-timeline").classList.toggle("active", v === "timeline");
-  if (v === "timeline" && !filters.showDone) {
-    filters.showDone = true;
-    $("f-show-done").checked = true;
-  }
-  render();
 }
 
 function fillSelect(sel, label, values, current) {
@@ -476,10 +452,12 @@ function addRaw(raw) {
       : `${todayStr()} ${raw}`;
     parsed = parseLine(raw, lines.length);
   }
-  // 完了済みとして追加する場合は完了時刻がなければ自動付与する
-  if (parsed.completed && !ctimeOf(parsed)) {
-    raw = `${raw} ctime:${nowStamp()}`;
-    parsed = parseLine(raw, lines.length);
+  // 完了済みとして追加する場合は完了日・完了時刻がなければ自動付与する
+  if (parsed.completed && (!parsed.completionDate || !ctimeOf(parsed))) {
+    const t = { ...parsed };
+    if (!t.completionDate) t.completionDate = todayStr();
+    if (!ctimeOf(parsed)) t.body = withCtime(t.body, nowStamp());
+    parsed = parseLine(stringify(t), lines.length);
   }
   lines.push(parsed);
   markDirty(); render();
@@ -706,9 +684,6 @@ function bind() {
   });
 
   // フィルタ
-  // 表示切替（一覧 / タイムライン）
-  $("view-list").addEventListener("click", () => setView("list"));
-  $("view-timeline").addEventListener("click", () => setView("timeline"));
   $("q").addEventListener("input", (e) => { filters.q = e.target.value; render(); });
   $("f-project").addEventListener("change", (e) => { filters.project = e.target.value; render(); });
   $("f-context").addEventListener("change", (e) => { filters.context = e.target.value; render(); });

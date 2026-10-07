@@ -61,6 +61,7 @@ try:
             break
     check("found dateless sample task", target is not None)
     if target:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", target)
         target.click()  # 行タップで編集モーダル
         wait.until(EC.visibility_of_element_located((By.ID, "edit-dialog")))
         check("row tap opens modal (Goodwill)",
@@ -72,6 +73,7 @@ try:
     # 期日(due)設定 → プレビューと保存に反映されるか
     tasks = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
     target = next(t for t in tasks if "実機テストタスク" in t.text)
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", target)
     target.click()  # 行タップで編集モーダル
     wait.until(EC.visibility_of_element_located((By.ID, "edit-dialog")))
     check("row tap opens modal (due edit)",
@@ -115,7 +117,9 @@ try:
     driver.find_element(By.ID, "btn-add").click()
     wait.until(lambda d: any("直接追加の完了タスク" in e.text for e in d.find_elements(By.CSS_SELECTOR, "#task-list .task")))
     ts = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
-    next(t for t in ts if "直接追加の完了タスク" in t.text).click()
+    _t = next(t for t in ts if "直接追加の完了タスク" in t.text)
+    driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", _t)
+    _t.click()
     wait.until(EC.visibility_of_element_located((By.ID, "edit-dialog")))
     preview = driver.find_element(By.ID, "ed-preview").text
     check("ctime autofilled on completed quick-add",

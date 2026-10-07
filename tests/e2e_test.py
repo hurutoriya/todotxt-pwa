@@ -121,6 +121,13 @@ try:
     check("email not linkified", len(mail_task.find_elements(By.CSS_SELECTOR, ".body a")) == 0)
     check("2+2 not project-tagged", len(mail_task.find_elements(By.CSS_SELECTOR, ".tag-proj")) == 0)
     check("project highlight kept", len(driver.find_elements(By.CSS_SELECTOR, ".tag-proj")) > 0)
+    tasks = driver.find_elements(By.CSS_SELECTOR, "#task-list .task")
+    bank = next(t for t in tasks if "銀行に電話する" in t.text)
+    check("tags in meta not body",
+          "+家計" not in bank.find_element(By.CSS_SELECTOR, ".body").text
+          and "@phone" not in bank.find_element(By.CSS_SELECTOR, ".body").text
+          and "+家計" in bank.find_element(By.CSS_SELECTOR, ".meta").text
+          and "@phone" in bank.find_element(By.CSS_SELECTOR, ".meta").text)
 
     # x付きで直接追加した完了タスクにも完了時刻が自動付与される
     driver.find_element(By.ID, "quick-add").send_keys("x 直接追加の完了タスク")

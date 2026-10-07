@@ -297,6 +297,12 @@ function highlight(body, line) {
         continue;
       }
     }
+    // プロジェクト・コンテキストはメタ行に表示するため本文では省略する
+    if (/^[+@]\S+$/.test(tok)) {
+      if (parts[k + 1] && /^\s+$/.test(parts[k + 1])) k++;
+      else if (out.length && /^\s+$/.test(out[out.length - 1])) out.pop();
+      continue;
+    }
     // URL (http/https のみ。javascript: 等は対象外)
     const mUrl = tok.match(/^(https?:\/\/[^\s<]+)/i);
     if (mUrl) {
@@ -336,10 +342,12 @@ function appendTask(ul, { l, i }, time = null) {
     <input type="checkbox" ${l.completed ? "checked" : ""} aria-label="完了切替" />
     <div class="task-main">
       <div class="body">${highlight(l.body || escapeHtml("(空)"), l)}</div>
-      <div class="meta">
-        ${time ? `<span class="tl-time">${escapeHtml(time)}</span>` : ""}
-        ${l.priority ? `<span class="pri pri-${l.priority}">${escapeHtml(l.priority)}</span>` : ""}
-        ${l.creationDate ? `<span>作成 ${escapeHtml(l.creationDate)}</span>` : ""}
+        <div class="meta">
+          ${time ? `<span class="tl-time">${escapeHtml(time)}</span>` : ""}
+          ${l.priority ? `<span class="pri pri-${l.priority}">${escapeHtml(l.priority)}</span>` : ""}
+          ${l.projects.map((p) => `<span class="tag-proj">+${escapeHtml(p)}</span>`).join("")}
+          ${l.contexts.map((c) => `<span class="tag-ctx">@${escapeHtml(c)}</span>`).join("")}
+          ${l.creationDate ? `<span>作成 ${escapeHtml(l.creationDate)}</span>` : ""}
         ${l.completionDate ? `<span>完了 ${escapeHtml(l.completionDate)}</span>` : ""}
         ${due ? `<span class="tag-due${overdue ? " overdue" : ""}">〆 ${escapeHtml(due)}${overdue ? " 期限切れ" : ""}</span>` : ""}
       </div>

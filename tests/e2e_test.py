@@ -20,6 +20,7 @@ opts = webdriver.ChromeOptions()
 opts.add_argument("--headless=new")
 opts.add_argument("--no-sandbox")
 opts.add_argument("--disable-gpu")
+opts.set_capability("goog:loggingPrefs", {"browser": "ALL"})
 driver = webdriver.Chrome(
     service=Service(CHROMEDRIVER) if CHROMEDRIVER else Service(), options=opts)
 wait = WebDriverWait(driver, 10)
@@ -200,6 +201,10 @@ try:
     check("welcome skipped on restore", not welcome_shown)
     bodies = [e.text for e in driver.find_elements(By.CSS_SELECTOR, "#task-list .task")]
     check("persist across reload", any("実機テストタスク" in b and "2026-10-05" in b for b in bodies))
+
+    # コンソールにSEVEREエラーがないこと（JS実行時エラーの検出）
+    severe = [e for e in driver.get_log("browser") if e.get("level") == "SEVERE"]
+    check("no console errors", len(severe) == 0, str(severe[:5]))
 
     driver.save_screenshot("/tmp/opencode/shot.png")
 finally:

@@ -275,7 +275,7 @@ function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function highlight(body, line) {
+function highlightSegment(body, line) {
   // 空白区切りトークン単位で処理する。URL内の +/@ や "2+2"・"soandso@example.com"
   // の誤検出を防ぐ（仕様上 +/@ は空白の直後に置かれたもののみ有効）
   const parts = String(body).split(/(\s+)/);
@@ -328,8 +328,63 @@ function highlight(body, line) {
     });
     out.push(h);
   }
-  const html = out.join("");
-  return html.trim() === "" ? "(空)" : html;
+  return out.join("");
+}
+
+function highlight(body, line) {
+  const text = String(body);
+  // markdown リンク [label](http(s)://...) がなければ従来処理のみ
+  if (!text.includes("](")) {
+    const html = highlightSegment(text, line);
+    return html.trim() === "" ? "(空)" : html;
+  }
+  let html = "";
+  let pos = 0;
+  let search = 0;
+  while (true) {
+    const open = text.indexOf("[", search);
+    if (open === -1) break;
+    const closeLabel = text.indexOf("]", open + 1);
+    if (closeLabel === -1) break;
+    if (text[closeLabel + 1] !== "(") { search = closeLabel + 1; continue; }
+    const label = text.slice(open + 1, closeLabel);
+    // ラベル内の改行・ネストは対象外
+    if (label.includes("[") || label.includes("\n")) { search = closeLabel + 1; continue; }
+    // URL内に括弧を含む場合 (例: Wiki の /X_(Y)) に備えて外側の ) を括弧対応で探す
+    let depth = 1;
+    let i = closeLabel + 2;
+    for (; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) break;
+      } else if (ch === "\n") break;
+    }
+    if (depth !== 0) { search = closeLabel + 1; continue; }
+    const closeParen = i;
+    const inside = text.slice(closeLabel + 2, closeParen);
+    // タイトル付き [text](url "title") は先頭トークンをURLとして扱う
+    const mInside = inside.match(/^(\S+)(?:\s+.*)?$/s);
+    if (!mInside) { search = closeLabel + 1; continue; }
+    const url = mInside[1];
+    // http/https のみリンク化 (javascript: 等は対象外)。<> や空白は不可
+    if (!/^https?:\/\/[^\s<>]+$/i.test(url) || url.length <= "https://".length) {
+      search = closeLabel + 1;
+      continue;
+    }
+    html += highlightSegment(text.slice(pos, open), line);
+    const display = label.trim() === "" ? url : label;
+    html += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)}</a>`;
+    pos = closeParen + 1;
+    search = pos;
+  }
+  html += highlightSegment(text.slice(pos), line);
+  // 本文がタグ等のみで可視テキストが空の場合は "(空)" (従来の highlight と同等)
+  // タグ除去後に文字が残るかで判定する (リンク表示がある場合は空にしない)
+  const visible = html.replace(/<[^>]*>/g, "").trim();
+  if (visible === "") return "(空)";
+  return html;
 }
 
 // ---- render ----
@@ -711,8 +766,15 @@ function bind() {
     $("quick-add").value = "";
     $("quick-add").focus();
   });
+  // IME変換中のEnter誤送信を防ぐ (isComposing は環境差があるため自前フラグ＋keyCode 229 も併用)
+  let quickAddComposing = false;
+  $("quick-add").addEventListener("compositionstart", () => { quickAddComposing = true; });
+  $("quick-add").addEventListener("compositionend", () => { quickAddComposing = false; });
   $("quick-add").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { addRaw(e.target.value); e.target.value = ""; }
+    if (e.key !== "Enter") return;
+    if (e.isComposing || quickAddComposing || e.keyCode === 229) return;
+    addRaw(e.target.value);
+    e.target.value = "";
   });
 
   // フィルタ

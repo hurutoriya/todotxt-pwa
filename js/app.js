@@ -1,4 +1,4 @@
-import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate, ctimeOf, stripCtime, withCtime, nowStamp } from "./parser.js";
+import { parseText, parseLine, stringify, toggleComplete, dueOf, todayStr, isValidDate, ctimeOf, stripCtime, stripDue, withCtime, nowStamp } from "./parser.js";
 import {
   supportsFS, pickFile, createFile, readHandle, writeHandle,
   getRecents, getStoredHandle, verifyPermission, downloadText,
@@ -551,13 +551,66 @@ function addRaw(raw) {
 }
 
 // ---- edit dialog ----
-/** 期日欄の値を body の due:YYYY-MM-DD に反映する（todo.txt の key:value 拡張） */
+/** 期日欄の値を body の due:YYYY-MM-DD に反映する（todo.txt の key:value 拡張）。
+ *  有効な期日の管理は期日欄に一元化し、本文中の有効な due トークンは取り除く。
+ *  不正な due:xxx は本文メモとして温存する */
 function bodyWithDue(body, due) {
-  const hasValidDue = /\bdue:\d{4}-\d{2}-\d{2}\b/.test(body);
+  const m = String(body).match(/\bdue:(\d{4}-\d{2}-\d{2})\b/);
+  const hasValidDue = m && isValidDate(m[1]);
   if (!due && !hasValidDue) return body; // 不正な due トークンは温存する
-  let b = body.replace(/\bdue:\S+/g, "").replace(/\s{2,}/g, " ").trim();
+  let b = stripDue(body);
   if (due) b = b ? `${b} due:${due}` : `due:${due}`;
   return b;
+}
+
+/** 編集欄の値を単一行に畳む（todo.txtは1行形式のため改行は空白にする。表示はtextareaの自動折り返し） */
+function editBodyValue() {
+  return $("ed-body").value.replace(/\r\n?/g, "\n").replace(/\n/g, " ");
+}
+
+/** 編集欄の高さを内容に合わせる（最大40vh、はみ出し分は内部スクロール） */
+function autosizeEditBody() {
+  const el = $("ed-body");
+  el.style.height = "auto";
+  const max = Math.max(120, Math.floor(window.innerHeight * 0.4));
+  el.style.height = Math.min(el.scrollHeight, max) + "px";
+  el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+}
+
+/** 有効な期日を決める。期日欄が優先され、空欄の場合は本文に手入力された有効な due: を採用する */
+function effectiveDue() {
+  const formDue = $("ed-due").value || null;
+  if (formDue) return formDue;
+  const m = editBodyValue().match(/\bdue:(\d{4}-\d{2}-\d{2})\b/);
+  return m && isValidDate(m[1]) ? m[1] : null;
+}
+
+/** 本文欄に入力された有効な due: を即座に期日欄へ移動し、本文から取り除く（期日の一元管理） */
+function onEditBodyInput() {
+  const el = $("ed-body");
+  const found = [...el.value.matchAll(/\bdue:(\d{4}-\d{2}-\d{2})\b/g)]
+    .filter((m) => isValidDate(m[1]));
+  if (found.length) {
+    // 複数あれば末尾を採用し、すべて本文から除去する
+    $("ed-due").value = found[found.length - 1][1];
+    const pos = el.selectionStart ?? el.value.length;
+    let value = el.value;
+    let removedBeforeCursor = 0;
+    for (let k = found.length - 1; k >= 0; k--) {
+      const tok = found[k][0];
+      let s = found[k].index, e = s + tok.length;
+      // トークン前後の重複空白を1つ分だけ一緒に除去する
+      if (s > 0 && /\s/.test(value[s - 1]) && (e >= value.length || /\s/.test(value[e]))) s -= 1;
+      else if (e < value.length && /\s/.test(value[e]) && s === 0) e += 1;
+      if (s < pos) removedBeforeCursor += Math.min(e, pos) - s;
+      value = value.slice(0, s) + value.slice(e);
+    }
+    el.value = value;
+    const newPos = Math.max(0, pos - removedBeforeCursor);
+    el.setSelectionRange(newPos, newPos);
+  }
+  autosizeEditBody();
+  updatePreview();
 }
 
 /** ダイアログの各欄から構造化タスクを組み立てる */
@@ -568,7 +621,7 @@ function readEditForm() {
     creationDate: $("ed-created").value || null,
     // 完了日・完了時刻は表示しない。完了済みのままなら既存値を保持する
     completionDate: editingCompleted ? (editingCompletionDate || todayStr()) : null,
-    body: withCtime(bodyWithDue($("ed-body").value.trim(), $("ed-due").value || null), editingCtime),
+    body: withCtime(bodyWithDue(editBodyValue().trim(), effectiveDue()), editingCtime),
   };
   return t;
 }
@@ -581,10 +634,10 @@ function openEdit(i) {
   $("ed-pri").value = l.priority ?? "";
   $("ed-created").value = l.creationDate ?? "";
   editingCompletionDate = l.completionDate ?? null;
-  // 完了時刻・タスク内容は表示用に分離する（ctime は保存時に再付与）
+  // 完了時刻・期日・タスク内容は表示用に分離する（ctime/due は保存時に再付与し、本文欄には出さない）
   const ct = ctimeOf(l);
   editingCtime = ct ? `${ct.date}-${ct.time.replace(":", "-")}` : null;
-  $("ed-body").value = stripCtime(l.body);
+  $("ed-body").value = stripDue(stripCtime(l.body));
   const d = l.fields?.due?.[0];
   $("ed-due").value = d && isValidDate(d) ? d : "";
   // 作成日が空の未完了タスクは今日で自動FILLする
@@ -593,9 +646,13 @@ function openEdit(i) {
   }
   updatePreview();
   $("edit-dialog").showModal();
+  autosizeEditBody();
 }
 
 function updatePreview() {
+  // 本文に手入力された有効な due: は期日欄へ移動して一元管理する
+  const due = effectiveDue();
+  if (due && !$("ed-due").value) $("ed-due").value = due;
   $("ed-preview").textContent = stringify(readEditForm());
 }
 
@@ -788,10 +845,11 @@ function bind() {
     e.target.value = filters.sort;
     render();
   });
-  // 編集ダイアログの連動（構造化欄→プレビュー更新のみ）
-  for (const id of ["ed-pri", "ed-created", "ed-due", "ed-body"]) {
+  // 編集ダイアログの連動（構造化欄→プレビュー更新のみ。ed-body は due: の即時分離つき）
+  for (const id of ["ed-pri", "ed-created", "ed-due"]) {
     $(id).addEventListener("input", updatePreview);
   }
+  $("ed-body").addEventListener("input", onEditBodyInput);
   $("ed-save").addEventListener("click", (e) => { e.preventDefault(); saveEdit(); $("edit-dialog").close(); });
   $("ed-delete").addEventListener("click", (e) => {
     e.preventDefault();

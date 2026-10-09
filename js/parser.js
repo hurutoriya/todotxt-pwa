@@ -143,6 +143,20 @@ export function stripCtime(body) {
   return body.replace(/\bctime:\S+/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
+/** 有効な期日トークン due:YYYY-MM-DD のみを取り除く。不正な due:xxx は本文メモとして温存する */
+export function stripDue(body) {
+  return String(body)
+    .split(/(\s+)/)
+    .filter((tok) => {
+      if (tok === "" || /^\s+$/.test(tok)) return true;
+      const m = tok.match(/^due:(\d{4}-\d{2}-\d{2})$/);
+      return !(m && isValidDate(m[1]));
+    })
+    .join("")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export function withCtime(body, stamp) {
   const b = stripCtime(body);
   if (!stamp) return b;

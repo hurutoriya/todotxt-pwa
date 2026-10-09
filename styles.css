@@ -101,8 +101,13 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .edit-form { display: flex; flex-direction: column; gap: 10px; }
 .edit-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
 .edit-form input, .edit-form textarea, .edit-form select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); font-size: 0.9rem; }
+.edit-form textarea {
+  width: 100%; resize: vertical; min-height: 4.5em; max-height: 40vh;
+  line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+}
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.preview { font-size: 0.8rem; color: var(--muted); }
+.preview { font-size: 0.8rem; color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.preview code { overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; }
 menu { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0; padding: 0; }
 .menu-right { display: flex; gap: 8px; }
 .toast {

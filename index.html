@@ -109,8 +109,8 @@
         <label>期日 <input type="date" id="ed-due" /></label>
       </div>
       <label>タスク内容
-        <input type="text" id="ed-body" placeholder="例: 牛乳を買う +買い物 @外出" />
-        <span class="hint">プロジェクトは +名前、場所や手段は @名前 で書けます</span>
+        <textarea id="ed-body" rows="4" wrap="soft" placeholder="例: 牛乳を買う +買い物 @外出"></textarea>
+        <span class="hint">プロジェクトは +名前、場所や手段は @名前 で書けます（改行なし・自動折り返し）。期日は下の日付欄で管理されます</span>
       </label>
       <div class="preview">プレビュー: <code id="ed-preview"></code></div>
       <menu>
